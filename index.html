@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>DeepSeek 助手</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a1a2e">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 头部 -->
+        <header class="header">
+            <h1>🤖 DeepSeek 助手</h1>
+            <button class="clear-btn" id="clearBtn">清空对话</button>
+        </header>
+
+        <!-- 聊天区域 -->
+        <div class="chat-container" id="chatContainer">
+            <div class="welcome-message">
+                <div class="bot-avatar">🤖</div>
+                <div class="message-content">
+                    你好！我是 DeepSeek 助手，有什么可以帮你的吗？
+                </div>
+            </div>
+        </div>
+
+        <!-- API Key 配置区域 -->
+        <div class="api-config" id="apiConfig">
+            <div class="config-header">
+                <span>⚙️ API 配置</span>
+                <button class="toggle-config" id="toggleConfig">▼</button>
+            </div>
+            <div class="config-body" id="configBody">
+                <input type="password" 
+                       id="apiKeyInput" 
+                       placeholder="输入你的 DeepSeek API Key" 
+                       class="api-input">
+                <button class="save-btn" id="saveApiKey">保存</button>
+                <p class="api-hint">
+                    <a href="https://platform.deepseek.com/api_keys" target="_blank">
+                        获取 API Key →
+                    </a>
+                </p>
+            </div>
+        </div>
+
+        <!-- 输入区域 -->
+        <div class="input-container">
+            <textarea id="messageInput" 
+                      placeholder="输入消息..." 
+                      rows="1"
+                      maxlength="5000"></textarea>
+            <button class="send-btn" id="sendBtn">
+                <span class="send-icon">➤</span>
+            </button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
