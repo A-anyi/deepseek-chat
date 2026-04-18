@@ -10,51 +10,68 @@
 </head>
 <body>
     <div class="app-container">
-        <!-- 头部 -->
-        <header class="header">
-            <h1>🤖 DeepSeek 助手</h1>
-            <button class="clear-btn" id="clearBtn">清空对话</button>
-        </header>
+        <!-- 侧边栏 - 对话列表 -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h3>💬 对话列表</h3>
+                <button class="new-chat-btn" id="newChatBtn">+ 新对话</button>
+            </div>
+            <div class="chat-list" id="chatList"></div>
+        </div>
 
-        <!-- 聊天区域 -->
-        <div class="chat-container" id="chatContainer">
-            <div class="welcome-message">
-                <div class="bot-avatar">🤖</div>
-                <div class="message-content">
-                    你好！我是 DeepSeek 助手，有什么可以帮你的吗？
+        <!-- 遮罩层 -->
+        <div class="overlay" id="overlay"></div>
+
+        <!-- 主内容区 -->
+        <div class="main-content">
+            <!-- 头部 -->
+            <header class="header">
+                <button class="menu-btn" id="menuBtn">☰</button>
+                <h1 id="chatTitle">✨ DeepSeek</h1>
+                <button class="clear-btn" id="clearBtn">🗑️</button>
+            </header>
+
+            <!-- 聊天区域 -->
+            <div class="chat-container" id="chatContainer">
+                <div class="welcome-message">
+                    <div class="bot-avatar">✨</div>
+                    <div class="message-content">
+                        你好！我是 DeepSeek 助手，有什么可以帮你的吗？<br>
+                        点击左上角菜单可以管理多个对话哦~
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- API Key 配置区域 -->
-        <div class="api-config" id="apiConfig">
-            <div class="config-header">
-                <span>⚙️ API 配置</span>
-                <button class="toggle-config" id="toggleConfig">▼</button>
+            <!-- API 配置区域 -->
+            <div class="api-config" id="apiConfig">
+                <div class="config-header">
+                    <span>⚙️ API 配置</span>
+                    <button class="toggle-config" id="toggleConfig">▼</button>
+                </div>
+                <div class="config-body collapsed" id="configBody">
+                    <input type="password" 
+                           id="apiKeyInput" 
+                           placeholder="输入你的 DeepSeek API Key" 
+                           class="api-input">
+                    <button class="save-btn" id="saveApiKey">保存</button>
+                    <p class="api-hint">
+                        <a href="https://platform.deepseek.com/api_keys" target="_blank">
+                            🔑 获取 API Key →
+                        </a>
+                    </p>
+                </div>
             </div>
-            <div class="config-body" id="configBody">
-                <input type="password" 
-                       id="apiKeyInput" 
-                       placeholder="输入你的 DeepSeek API Key" 
-                       class="api-input">
-                <button class="save-btn" id="saveApiKey">保存</button>
-                <p class="api-hint">
-                    <a href="https://platform.deepseek.com/api_keys" target="_blank">
-                        获取 API Key →
-                    </a>
-                </p>
-            </div>
-        </div>
 
-        <!-- 输入区域 -->
-        <div class="input-container">
-            <textarea id="messageInput" 
-                      placeholder="输入消息..." 
-                      rows="1"
-                      maxlength="5000"></textarea>
-            <button class="send-btn" id="sendBtn">
-                <span class="send-icon">➤</span>
-            </button>
+            <!-- 输入区域 -->
+            <div class="input-container">
+                <textarea id="messageInput" 
+                          placeholder="输入消息..." 
+                          rows="1"
+                          maxlength="5000"></textarea>
+                <button class="send-btn" id="sendBtn">
+                    <span class="send-icon">➤</span>
+                </button>
+            </div>
         </div>
     </div>
 
