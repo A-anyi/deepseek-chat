@@ -127,7 +127,6 @@ body {
     gap: 6px;
     font-size: 0.7rem;
     color: var(--text-muted);
-    flex-wrap: wrap;
 }
 
 .chat-item.active .chat-item-meta { color: rgba(255,255,255,0.7); }
@@ -214,7 +213,7 @@ body {
     padding: 5px 10px;
     border-radius: 14px;
     cursor: pointer;
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     transition: all 0.2s;
     white-space: nowrap;
 }
@@ -262,53 +261,6 @@ body {
 
 .branch-btn:hover { background: rgba(245,158,11,0.1); color: var(--warning-color); }
 .clear-btn:hover { background: rgba(239,68,68,0.1); color: var(--danger-color); }
-
-/* ========== 快捷工具栏 ========== */
-.quick-tools {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 14px;
-    background: var(--bg-dark);
-    border-bottom: 1px solid var(--border-color);
-    flex-wrap: wrap;
-}
-
-.tool-btn {
-    background: rgba(255,255,255,0.05);
-    border: 1px solid var(--border-color);
-    color: var(--text-muted);
-    padding: 4px 10px;
-    border-radius: 12px;
-    cursor: pointer;
-    font-size: 0.72rem;
-    transition: all 0.2s;
-    white-space: nowrap;
-}
-
-.tool-btn:hover {
-    background: rgba(255,255,255,0.1);
-    color: var(--text-light);
-    border-color: var(--primary-color);
-}
-
-.context-info {
-    margin-left: auto;
-    font-size: 0.7rem;
-    color: var(--text-muted);
-    white-space: nowrap;
-    padding: 4px 8px;
-    background: rgba(255,255,255,0.03);
-    border-radius: 8px;
-}
-
-.context-info.warning {
-    color: var(--warning-color);
-}
-
-.context-info.danger {
-    color: var(--danger-color);
-}
 
 /* ========== 聊天区域 ========== */
 .chat-container {
@@ -378,6 +330,7 @@ body {
     border-top-right-radius: 4px;
 }
 
+/* 编辑高亮 */
 .message.user.editing .message-content {
     border: 2px solid var(--warning-color) !important;
     box-shadow: 0 0 10px rgba(245,158,11,0.4);
@@ -387,12 +340,6 @@ body {
 @keyframes pulse-edit {
     0%, 100% { box-shadow: 0 0 10px rgba(245,158,11,0.4); }
     50% { box-shadow: 0 0 18px rgba(245,158,11,0.7); }
-}
-
-/* 摘要消息样式 */
-.message.summary .message-content {
-    background: rgba(16, 185, 129, 0.15);
-    border: 1px solid var(--success-color);
 }
 
 /* 消息折叠 */
@@ -810,9 +757,7 @@ body {
     .sidebar { width: 260px; left: -260px; }
     .chat-item-actions { opacity: 1; }
     .message-actions { opacity: 1; }
-    .model-toggle-btn { font-size: 0.7rem; padding: 4px 8px; }
-    .tool-btn { font-size: 0.68rem; padding: 3px 8px; }
-    .context-info { font-size: 0.65rem; }
+    .model-toggle-btn { font-size: 0.75rem; padding: 4px 8px; }
 }
 
 /* 滚动条 */
