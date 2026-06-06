@@ -6,6 +6,9 @@ let isWaiting = false;
 let currentFile = null;
 let collapsedGroups = new Set();
 
+// 头像图片路径
+const AVATAR_URL = 'deepseek.png';
+
 // 模型列表
 const availableModels = [
     { id: 'deepseek-chat', name: '💎 V4-Pro', desc: '旗舰模型，综合最强' },
@@ -333,14 +336,12 @@ function renderMessages(messages) {
     collapsedGroups.clear();
 
     if (!messages || messages.length === 0) {
-        const idx = { pro: 0, reasoner: 1, flash: 2 }[currentModelKey] || 0;
-        const modelInfo = availableModels[idx];
         chatContainer.innerHTML = `
             <div class="welcome-message">
-                <div class="bot-avatar"><img src="deepseek.png" alt="助手"></div>
+                <div class="bot-avatar"><img src="${AVATAR_URL}" alt="助手"></div>
                 <div class="message-content">
-                    当前：${modelInfo.name}<br>${modelInfo.desc}<br>
-                    ☰ 对话 | 🔀 分支 | 🔄 重新生成
+                    你好！我是 DeepSeek 助手<br>
+                    选择模型 | 管理对话 | 上传文件
                 </div>
             </div>
         `;
@@ -433,12 +434,20 @@ function renderMessages(messages) {
     scrollToBottom();
 }
 
+// 创建消息元素（助手有头像，用户无头像）
 function createMsgEl(role, content) {
     const div = document.createElement('div');
     div.className = `message ${role}`;
-    div.innerHTML = role === 'assistant'
-        ? `<div class="bot-avatar"><img src="deepseek.png" alt="助手"></div><div class="message-content">${formatMsg(content)}</div>`
-        : `<div class="bot-avatar">⚫</div><div class="message-content">${escapeHtml(content)}</div>`;
+    if (role === 'assistant') {
+        div.innerHTML = `
+            <div class="bot-avatar"><img src="${AVATAR_URL}" alt="助手"></div>
+            <div class="message-content">${formatMsg(content)}</div>
+        `;
+    } else {
+        div.innerHTML = `
+            <div class="message-content">${escapeHtml(content)}</div>
+        `;
+    }
     return div;
 }
 
@@ -525,7 +534,7 @@ async function sendMessage() {
         }
     } catch (error) {
         removeTyping();
-        chatContainer.innerHTML += `<div class="message assistant"><div class="bot-avatar"><img src="deepseek.png" alt="助手"></div><div class="message-content">❌ ${escapeHtml(error.message)}</div></div>`;
+        chatContainer.innerHTML += `<div class="message assistant"><div class="bot-avatar"><img src="${AVATAR_URL}" alt="助手"></div><div class="message-content">${escapeHtml(error.message)}</div></div>`;
     } finally {
         isWaiting = false;
         sendBtn.disabled = false;
@@ -564,7 +573,7 @@ async function regenerateMessage(userMsgIndex) {
         }
     } catch (error) {
         removeTyping();
-        chatContainer.innerHTML += `<div class="message assistant"><div class="bot-avatar"><img src="deepseek.png" alt="助手"></div><div class="message-content">❌ ${escapeHtml(error.message)}</div></div>`;
+        chatContainer.innerHTML += `<div class="message assistant"><div class="bot-avatar"><img src="${AVATAR_URL}" alt="助手"></div><div class="message-content">${escapeHtml(error.message)}</div></div>`;
     } finally {
         isWaiting = false;
         sendBtn.disabled = false;
@@ -717,7 +726,7 @@ function showTyping() {
     const div = document.createElement('div');
     div.className = 'message assistant';
     div.id = 'typingIndicator';
-    div.innerHTML = `<div class="bot-avatar"><img src="deepseek.png" alt="助手"></div><div class="message-content"><div class="typing-indicator"><span></span><span></span><span></span></div></div>`;
+    div.innerHTML = `<div class="bot-avatar"><img src="${AVATAR_URL}" alt="助手"></div><div class="message-content"><div class="typing-indicator"><span></span><span></span><span></span></div></div>`;
     chatContainer.appendChild(div);
     scrollToBottom();
 }
