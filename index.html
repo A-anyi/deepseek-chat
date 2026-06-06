@@ -21,7 +21,6 @@
             </div>
             <div class="chat-list" id="chatList"></div>
         </div>
-
         <div class="overlay" id="overlay"></div>
 
         <!-- 主内容区 -->
@@ -31,12 +30,12 @@
                 <h1 id="chatTitle">DeepSeek</h1>
                 <div class="header-actions">
                     <button class="model-toggle-btn" id="modelToggleBtn" title="切换模型">DeepSeek-V3 ▾</button>
-                    <button class="branch-btn" id="branchBtn" title="分支对话">🔀</button>
-                    <button class="clear-btn" id="clearBtn" title="清空对话">🗑️</button>
+                    <button class="branch-btn" id="branchBtn" title="分支">🔀</button>
+                    <button class="clear-btn" id="clearBtn" title="清空">🗑️</button>
                 </div>
             </header>
 
-            <!-- 模型下拉菜单 -->
+            <!-- 模型下拉 -->
             <div class="model-dropdown" id="modelDropdown">
                 <div class="model-dropdown-item active" data-model-key="chat">DeepSeek-V3 · 通用对话</div>
                 <div class="model-dropdown-item" data-model-key="reasoner">DeepSeek-R1 · 深度思考</div>
@@ -47,22 +46,16 @@
                     <div class="bot-avatar"><img src="deepseek.png" alt="助手"></div>
                     <div class="message-content">
                         你好！我是 DeepSeek 助手<br>
-                        ✏️ 编辑消息 | 🔄 重新生成 | 🔀 分支 | 📋 摘要前文
+                        ✏️ 编辑 | 🔄 重生成 | 🔀 分支 | 📋 摘要前文
                     </div>
                 </div>
             </div>
 
             <!-- 快捷工具栏 -->
             <div class="quick-tools" id="quickTools">
-                <button class="tool-btn" id="summarizeBtn" title="将当前对话压缩为摘要，清空历史以节省token">
-                    📋 摘要前文
-                </button>
-                <button class="tool-btn" id="newFromSummaryBtn" title="基于摘要创建新对话">
-                    🆕 从摘要新建
-                </button>
-                <span class="context-info" id="contextInfo" title="当前对话上下文token估算">
-                    📊 上下文: 0 token
-                </span>
+                <button class="tool-btn" id="summarizeBtn" title="压缩当前对话为摘要">📋 摘要前文</button>
+                <button class="tool-btn" id="newFromSummaryBtn" title="基于摘要新建对话">🆕 从摘要新建</button>
+                <span class="context-info" id="contextInfo">📊 ~0 tokens</span>
             </div>
 
             <!-- API 配置 -->
