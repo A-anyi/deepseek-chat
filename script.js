@@ -1,3 +1,4 @@
+// ==================== 全局变量 ====================
 var apiKey = localStorage.getItem('deepseek_api_key') || '';
 var conversations = [];
 var currentChatId = null;
@@ -8,13 +9,14 @@ var editingMessageIndex = null;
 var AVATAR_URL = 'deepseek.png';
 
 var modelList = [
-    { key: 'chat', id: 'deepseek-chat', name: 'V3' },
-    { key: 'reasoner', id: 'deepseek-reasoner', name: 'R1' }
+    { key: 'chat', id: 'deepseek-chat', name: 'DeepSeek-V3', desc: '通用对话' },
+    { key: 'reasoner', id: 'deepseek-reasoner', name: 'DeepSeek-R1', desc: '深度思考' }
 ];
 
 var currentModelKey = localStorage.getItem('deepseek_model_key') || 'chat';
 var currentModel = modelList.find(function(m) { return m.key === currentModelKey; }).id;
 
+// DOM
 var chatContainer = document.getElementById('chatContainer');
 var messageInput = document.getElementById('messageInput');
 var sendBtn = document.getElementById('sendBtn');
@@ -52,34 +54,36 @@ function init() {
     updateModelBtnText();
     renderDropdownActive();
 
-    sendBtn.addEventListener('click', sendMessage);
-    clearBtn.addEventListener('click', clearCurrentChat);
-    branchBtn.addEventListener('click', branchCurrentChat);
-    saveApiKeyBtn.addEventListener('click', saveApiKey);
-    toggleConfig.addEventListener('click', toggleConfigPanel);
-    menuBtn.addEventListener('click', openSidebar);
-    newChatBtn.addEventListener('click', function() { createNewChat(); closeSidebar(); });
-    overlay.addEventListener('click', closeSidebar);
-    attachBtn.addEventListener('click', function() { fileInput.click(); });
-    fileInput.addEventListener('change', handleFileSelect);
-    searchInput.addEventListener('input', handleSearch);
-    exportBtn.addEventListener('click', exportData);
-    importBtn.addEventListener('click', function() { importFileInput.click(); });
-    importFileInput.addEventListener('change', importData);
-    summarizeBtn.addEventListener('click', summarizeContext);
-    newFromSummaryBtn.addEventListener('click', newFromSummary);
+    // 基础事件 - 使用 onclick 属性确保移动端兼容
+    sendBtn.onclick = sendMessage;
+    clearBtn.onclick = clearCurrentChat;
+    branchBtn.onclick = branchCurrentChat;
+    saveApiKeyBtn.onclick = saveApiKey;
+    toggleConfig.onclick = toggleConfigPanel;
+    menuBtn.onclick = openSidebar;
+    newChatBtn.onclick = function() { createNewChat(); closeSidebar(); };
+    overlay.onclick = closeSidebar;
+    attachBtn.onclick = function() { fileInput.click(); };
+    fileInput.onchange = handleFileSelect;
+    searchInput.oninput = handleSearch;
+    exportBtn.onclick = exportData;
+    importBtn.onclick = function() { importFileInput.click(); };
+    importFileInput.onchange = importData;
+    summarizeBtn.onclick = summarizeContext;
+    newFromSummaryBtn.onclick = newFromSummary;
 
-    modelToggleBtn.addEventListener('click', function(e) {
+    // 模型切换
+    modelToggleBtn.onclick = function(e) {
         e.preventDefault(); e.stopPropagation();
         modelDropdown.classList.toggle('show');
-    });
+    };
 
     modelDropdown.querySelectorAll('.model-dropdown-item').forEach(function(item) {
-        item.addEventListener('click', function(e) {
+        item.onclick = function(e) {
             e.preventDefault(); e.stopPropagation();
             switchModel(item.dataset.modelKey);
             modelDropdown.classList.remove('show');
-        });
+        };
     });
 
     document.addEventListener('click', function(e) {
@@ -95,8 +99,11 @@ function init() {
         }
     });
 
-    messageInput.addEventListener('input', autoResize);
+    messageInput.oninput = autoResize;
+
+    // 事件委托 - 同时监听 click 和 touchend
     chatContainer.addEventListener('click', handleActionClick);
+    chatContainer.addEventListener('touchend', handleActionClick);
 }
 
 function handleActionClick(e) {
@@ -124,13 +131,14 @@ function handleActionClick(e) {
     }
 }
 
-// ==================== 模型 ====================
+// ==================== 模型切换 ====================
 function switchModel(modelKey) {
     currentModelKey = modelKey;
     currentModel = modelList.find(function(m) { return m.key === modelKey; }).id;
     localStorage.setItem('deepseek_model_key', modelKey);
     updateModelBtnText();
     renderDropdownActive();
+    updateInputPlaceholder();
     showToast('已切换到 ' + modelList.find(function(m) { return m.key === modelKey; }).name);
 }
 
@@ -140,146 +148,275 @@ function updateModelBtnText() {
 
 function renderDropdownActive() {
     modelDropdown.querySelectorAll('.model-dropdown-item').forEach(function(item) {
-        item.classList.toggle('active', item.dataset.modelKey === currentModelKey);
+        if (item.dataset.modelKey === currentModelKey) {
+            item.classList.add('active');
+        } else {
+            item.classList.remove('active');
+        }
     });
+}
+
+function updateInputPlaceholder() {
+    if (editingMessageIndex !== null) {
+        messageInput.placeholder = '✏️ 编辑中，点击发送提交...';
+    } else if (currentModelKey === 'reasoner') {
+        messageInput.placeholder = 'R1 深度思考...（Shift+Enter 换行）';
+    } else {
+        messageInput.placeholder = '输入消息...（Shift+Enter 换行）';
+    }
 }
 
 // ==================== 上下文估算 ====================
 function estimateContextTokens(chat) {
-    if (!chat || !chat.messages.length) return 0;
+    if (!chat || !chat.messages || !chat.messages.length) return 0;
     var total = 0;
     chat.messages.forEach(function(msg) {
-        var c = msg.content || '';
-        var cn = (c.match(/[\u4e00-\u9fff]/g) || []).length;
-        total += Math.ceil(cn * 0.6 + (c.length - cn) * 0.25);
+        if (!msg.content) return;
+        var len = msg.content.length;
+        var chineseChars = (msg.content.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length;
+        var otherChars = len - chineseChars;
+        total += Math.ceil(chineseChars * 0.6 + otherChars * 0.25);
     });
-    return Math.max(total, (chat.tokenUsage && chat.tokenUsage.total_tokens) || 0);
+    return total;
 }
 
 function updateContextInfo() {
+    if (!contextInfo) return;
     var chat = conversations.find(function(c) { return c.id === currentChatId; });
-    var tokens = chat ? estimateContextTokens(chat) : 0;
-    contextInfo.textContent = '📊 ~' + fmtToken(tokens) + ' tokens';
+    if (!chat || !chat.messages || !chat.messages.length) {
+        contextInfo.textContent = '📊 上下文: 0 token';
+        contextInfo.className = 'context-info';
+        return;
+    }
+    var estimated = estimateContextTokens(chat);
+    var totalTokens = (chat.tokenUsage && chat.tokenUsage.total_tokens) ? chat.tokenUsage.total_tokens : 0;
+    var displayTokens = totalTokens > 0 ? totalTokens : estimated;
+
+    contextInfo.textContent = '📊 ~' + fmtToken(displayTokens) + ' tokens';
+
+    // 更新颜色
     contextInfo.className = 'context-info';
-    if (tokens > 4000) contextInfo.className = 'context-info danger';
-    else if (tokens > 2000) contextInfo.className = 'context-info warning';
+    if (displayTokens > 4000) {
+        contextInfo.className = 'context-info danger';
+        contextInfo.title = '上下文较长，建议摘要前文或新建对话';
+    } else if (displayTokens > 2000) {
+        contextInfo.className = 'context-info warning';
+        contextInfo.title = '上下文中等长度';
+    } else {
+        contextInfo.title = '上下文较短，消耗较少';
+    }
 }
 
-// ==================== 摘要 ====================
+// ==================== 摘要功能 ====================
 function summarizeContext() {
     var chat = conversations.find(function(c) { return c.id === currentChatId; });
-    if (!chat || chat.messages.length === 0) { alert('无内容可摘要'); return; }
-    if (isWaiting) { alert('请等待回复完成'); return; }
-    if (!apiKey) { alert('请先配置 API Key'); configBody.classList.remove('collapsed'); toggleConfig.classList.remove('collapsed'); return; }
+    if (!chat || !chat.messages || chat.messages.length === 0) {
+        alert('当前对话没有内容可摘要');
+        return;
+    }
 
-    var text = '';
+    if (isWaiting) {
+        alert('请等待当前回复完成');
+        return;
+    }
+
+    if (!apiKey) {
+        alert('请先配置 API Key');
+        configBody.classList.remove('collapsed');
+        if (toggleConfig) toggleConfig.classList.remove('collapsed');
+        return;
+    }
+
+    // 构建摘要请求
+    var contextText = '';
     chat.messages.forEach(function(msg) {
         var role = msg.role === 'user' ? '用户' : 'AI';
-        var c = msg.content.length > 300 ? msg.content.substring(0, 300) + '...' : msg.content;
-        text += role + ': ' + c + '\n';
+        var content = msg.content || '';
+        if (content.length > 300) content = content.substring(0, 300) + '...';
+        contextText += role + ': ' + content + '\n';
     });
 
-    if (!confirm('调用 API 生成摘要？')) return;
+    var summaryPrompt = '请将以下对话内容压缩为一段简短的前情提要（200字以内），只保留关键情节和设定：\n\n' + contextText;
 
-    isWaiting = true; sendBtn.disabled = true;
-    var loadingDiv = document.createElement('div');
-    loadingDiv.className = 'message assistant';
-    loadingDiv.id = 'summaryLoading';
-    loadingDiv.innerHTML = '<div class="bot-avatar"><img src="' + AVATAR_URL + '"></div><div class="message-content">📋 生成摘要中...</div>';
-    chatContainer.appendChild(loadingDiv);
-    scrollBottom();
+    if (confirm('将调用 API 生成摘要（约消耗1000 token），摘要后建议新建对话继续。确定？')) {
+        // 保存当前模型状态
+        var savedModelKey = currentModelKey;
+        var savedModel = currentModel;
+        // 摘要用 V3 更快更便宜
+        currentModelKey = 'chat';
+        currentModel = 'deepseek-chat';
 
-    callAPIStream(
-        [{ role: 'user', content: '请将以下对话压缩为200字以内的前情提要：\n\n' + text }],
-        function(fullText) {
-            var el = document.getElementById('summaryLoading'); if (el) el.remove();
-            chat.summary = fullText;
-            chat.messages.push({ role: 'assistant', content: '📋 **前情提要**：\n\n' + fullText + '\n\n---\n💡 点击「🆕 从摘要新建」开始新对话', isSummary: true });
-            chat.updatedAt = new Date().toISOString();
-            saveConversations(); renderMessages(chat.messages); renderChatList(); updateContextInfo();
-            isWaiting = false; sendBtn.disabled = false;
-            showToast('✅ 摘要已生成');
-        },
-        function(err) {
-            var el = document.getElementById('summaryLoading'); if (el) el.remove();
-            isWaiting = false; sendBtn.disabled = false;
-            alert('摘要失败: ' + err);
-        }
-    );
+        isWaiting = true;
+        sendBtn.disabled = true;
+        showTyping();
+
+        callAPI([{ role: 'user', content: summaryPrompt }]).then(function(r) {
+            // 恢复模型
+            currentModelKey = savedModelKey;
+            currentModel = savedModel;
+
+            removeTyping();
+            isWaiting = false;
+            sendBtn.disabled = false;
+
+            if (r && r.content) {
+                chat.summary = r.content;
+                chat.messages.push({
+                    role: 'assistant',
+                    content: '📋 **前情提要（摘要）**：\n\n' + r.content + '\n\n---\n💡 *建议点击「🆕 从摘要新建」开始新对话，可节省大量 token*',
+                    isSummary: true
+                });
+                chat.updatedAt = new Date().toISOString();
+                saveConversations();
+                renderMessages(chat.messages);
+                renderChatList();
+                updateContextInfo();
+                showToast('✅ 摘要已生成');
+            }
+        }).catch(function(e) {
+            currentModelKey = savedModelKey;
+            currentModel = savedModel;
+            removeTyping();
+            isWaiting = false;
+            sendBtn.disabled = false;
+            alert('摘要生成失败: ' + (e.message || '未知错误'));
+        });
+    }
 }
 
 function newFromSummary() {
     var chat = conversations.find(function(c) { return c.id === currentChatId; });
-    if (!chat || !chat.summary) { alert('请先生成摘要'); return; }
-    if (!confirm('基于摘要创建新对话？')) return;
+    if (!chat || !chat.summary) {
+        alert('请先生成摘要（点击「📋 摘要前文」）');
+        return;
+    }
 
-    var nc = {
-        id: Date.now().toString(), title: chat.title + ' (续)', messages: [],
-        parentId: chat.id, branchPoint: null, branches: [],
-        modelKey: currentModelKey, summary: chat.summary,
-        tokenUsage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
-    };
-    nc.messages.push({ role: 'user', content: '[前情提要]\n' + chat.summary + '\n\n请基于以上前情提要继续创作。', isContext: true });
-    conversations.unshift(nc); saveConversations(); renderChatList();
-    switchChat(nc.id); closeSidebar();
-    showToast('✅ 新对话已创建');
+    if (confirm('基于摘要创建新对话？\n新对话将以摘要作为上下文开始。')) {
+        var newChat = {
+            id: Date.now().toString(),
+            title: chat.title + ' (续)',
+            messages: [],
+            parentId: chat.id,
+            branchPoint: null,
+            branches: [],
+            modelKey: currentModelKey,
+            summary: chat.summary,
+            tokenUsage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+
+        newChat.messages.push({
+            role: 'user',
+            content: '[前情提要]\n' + chat.summary + '\n\n请基于以上前情提要，继续创作。',
+            isContext: true
+        });
+
+        conversations.unshift(newChat);
+        saveConversations();
+        renderChatList();
+        switchChat(newChat.id);
+        closeSidebar();
+        showToast('✅ 已创建新对话，摘要已带入上下文');
+    }
 }
 
 // ==================== 对话管理 ====================
 function loadConversations() {
-    var s = localStorage.getItem('deepseek_conversations');
-    if (s) { try { conversations = JSON.parse(s); } catch(e) { conversations = []; } }
+    var saved = localStorage.getItem('deepseek_conversations');
+    if (saved) {
+        try { conversations = JSON.parse(saved); } catch (e) { conversations = []; }
+    }
+    // 确保每个对话都有 tokenUsage
+    conversations.forEach(function(chat) {
+        if (!chat.tokenUsage) {
+            chat.tokenUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+        }
+    });
     renderChatList();
 }
 
-function saveConversations() { localStorage.setItem('deepseek_conversations', JSON.stringify(conversations)); }
+function saveConversations() {
+    localStorage.setItem('deepseek_conversations', JSON.stringify(conversations));
+}
 
 function createNewChat(parentChatId, branchPoint) {
     var chat = {
-        id: Date.now().toString(), title: '新对话', messages: [],
-        parentId: parentChatId || null, branchPoint: branchPoint || null, branches: [],
-        modelKey: currentModelKey, summary: null,
+        id: Date.now().toString(),
+        title: '新对话',
+        messages: [],
+        parentId: parentChatId || null,
+        branchPoint: branchPoint || null,
+        branches: [],
+        modelKey: currentModelKey,
+        summary: null,
         tokenUsage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
     };
+
     if (parentChatId && branchPoint !== null) {
         var p = conversations.find(function(c) { return c.id === parentChatId; });
         if (p) {
             chat.messages = p.messages.slice(0, branchPoint + 1);
-            chat.title = p.title + ' (分支)'; chat.modelKey = p.modelKey || currentModelKey; chat.summary = p.summary;
-            if (p.tokenUsage) chat.tokenUsage = { prompt_tokens: p.tokenUsage.prompt_tokens, completion_tokens: p.tokenUsage.completion_tokens, total_tokens: p.tokenUsage.total_tokens };
-            p.branches = p.branches || []; p.branches.push({ chatId: chat.id, atMessageIndex: branchPoint });
+            chat.title = p.title + ' (分支)';
+            chat.modelKey = p.modelKey || currentModelKey;
+            chat.summary = p.summary;
+            if (p.tokenUsage) {
+                chat.tokenUsage = {
+                    prompt_tokens: p.tokenUsage.prompt_tokens || 0,
+                    completion_tokens: p.tokenUsage.completion_tokens || 0,
+                    total_tokens: p.tokenUsage.total_tokens || 0
+                };
+            }
+            p.branches = p.branches || [];
+            p.branches.push({ chatId: chat.id, atMessageIndex: branchPoint });
         }
     }
-    conversations.unshift(chat); saveConversations(); renderChatList(); switchChat(chat.id);
+
+    conversations.unshift(chat);
+    saveConversations();
+    renderChatList();
+    switchChat(chat.id);
 }
 
 function switchChat(chatId) {
-    currentChatId = chatId; cancelEdit();
+    currentChatId = chatId;
+    cancelEdit();
     var chat = conversations.find(function(c) { return c.id === chatId; });
     if (!chat) return;
     chatTitle.textContent = chat.title;
     if (chat.modelKey && chat.modelKey !== currentModelKey) {
-        currentModelKey = chat.modelKey; currentModel = modelList.find(function(m) { return m.key === currentModelKey; }).id;
-        updateModelBtnText(); renderDropdownActive();
+        currentModelKey = chat.modelKey;
+        currentModel = modelList.find(function(m) { return m.key === currentModelKey; }).id;
+        updateModelBtnText();
+        renderDropdownActive();
+        updateInputPlaceholder();
     }
-    renderMessages(chat.messages); renderChatList(); updateContextInfo();
+    renderMessages(chat.messages);
+    renderChatList();
+    updateContextInfo();
 }
 
 function branchCurrentChat() {
     var chat = conversations.find(function(c) { return c.id === currentChatId; });
-    if (!chat || chat.messages.length === 0) { alert('请先发送消息'); return; }
+    if (!chat || !chat.messages || chat.messages.length === 0) { alert('请先发送消息'); return; }
     var bp = chat.messages.length - 1;
-    for (var i = bp; i >= 0; i--) { if (chat.messages[i].role === 'user') { bp = i; break; } }
-    if (confirm('从第 ' + (bp + 1) + ' 条消息处创建分支？')) { createNewChat(currentChatId, bp); closeSidebar(); }
+    for (var i = chat.messages.length - 1; i >= 0; i--) {
+        if (chat.messages[i].role === 'user') { bp = i; break; }
+    }
+    if (confirm('从第 ' + (bp + 1) + ' 条消息处创建分支？')) {
+        createNewChat(currentChatId, bp);
+        closeSidebar();
+    }
 }
 
 function deleteChat(chatId) {
-    if (conversations.length <= 1) { alert('至少保留一个'); return; }
-    if (confirm('确定删除？')) {
+    if (conversations.length <= 1) { alert('至少保留一个对话'); return; }
+    if (confirm('确定删除这个对话吗？')) {
         conversations = conversations.filter(function(c) { return c.id !== chatId; });
-        saveConversations(); renderChatList();
+        saveConversations();
+        renderChatList();
         if (chatId === currentChatId) switchChat(conversations[0].id);
     }
 }
@@ -287,119 +424,176 @@ function deleteChat(chatId) {
 function renameChat(chatId) {
     var chat = conversations.find(function(c) { return c.id === chatId; });
     if (!chat) return;
-    var t = prompt('新标题:', chat.title);
-    if (t && t.trim()) { chat.title = t.trim(); saveConversations(); renderChatList(); if (chatId === currentChatId) chatTitle.textContent = chat.title; }
+    var t = prompt('输入新标题:', chat.title);
+    if (t && t.trim()) {
+        chat.title = t.trim();
+        saveConversations();
+        renderChatList();
+        if (chatId === currentChatId) chatTitle.textContent = chat.title;
+    }
 }
 
 function clearCurrentChat() {
-    if (confirm('清空当前对话？')) {
+    if (confirm('确定清空当前对话？')) {
         var chat = conversations.find(function(c) { return c.id === currentChatId; });
         if (chat) {
-            chat.messages = []; chat.summary = null;
+            chat.messages = [];
+            chat.summary = null;
             chat.tokenUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
             chat.updatedAt = new Date().toISOString();
-            cancelEdit(); saveConversations(); renderMessages([]); renderChatList(); updateContextInfo();
+            cancelEdit();
+            saveConversations();
+            renderMessages([]);
+            renderChatList();
+            updateContextInfo();
         }
     }
 }
 
-// ==================== 编辑 ====================
-function startEdit(idx) {
+// ==================== 编辑消息 ====================
+function startEdit(msgIndex) {
     var chat = conversations.find(function(c) { return c.id === currentChatId; });
     if (!chat || isWaiting) return;
-    var msg = chat.messages[idx];
-    if (!msg || msg.role !== 'user' || msg.isContext) return;
-    if (editingMessageIndex !== null && editingMessageIndex !== idx) cancelEditSilent();
-    editingMessageIndex = idx; messageInput.value = msg.content; messageInput.focus();
-    showEditNotice(); renderMessages(chat.messages);
+    var msg = chat.messages[msgIndex];
+    if (!msg || msg.role !== 'user') return;
+    if (msg.isContext) { showToast('摘要上下文不可编辑'); return; }
+
+    if (editingMessageIndex !== null && editingMessageIndex !== msgIndex) cancelEditSilent();
+    editingMessageIndex = msgIndex;
+    messageInput.value = msg.content || '';
+    messageInput.focus();
+    updateInputPlaceholder();
+    showEditNotice();
+    renderMessages(chat.messages);
+    try { messageInput.scrollIntoView({ behavior: 'smooth' }); } catch(e) {}
 }
 
 function cancelEdit() {
-    editingMessageIndex = null; messageInput.value = ''; removeEditNotice();
+    editingMessageIndex = null;
+    messageInput.value = '';
+    updateInputPlaceholder();
+    removeEditNotice();
     var chat = conversations.find(function(c) { return c.id === currentChatId; });
     if (chat) renderMessages(chat.messages);
 }
 
-function cancelEditSilent() { editingMessageIndex = null; removeEditNotice(); }
+function cancelEditSilent() { editingMessageIndex = null; updateInputPlaceholder(); removeEditNotice(); }
 
 function confirmEdit() {
     var chat = conversations.find(function(c) { return c.id === currentChatId; });
     if (!chat || editingMessageIndex === null) return;
-    var nc = messageInput.value.trim(); if (!nc) { cancelEdit(); return; }
-    chat.messages[editingMessageIndex].content = nc;
+    var newContent = messageInput.value.trim();
+    if (!newContent) { cancelEdit(); return; }
+
+    chat.messages[editingMessageIndex].content = newContent;
     chat.messages = chat.messages.slice(0, editingMessageIndex + 1);
-    editingMessageIndex = null; messageInput.value = ''; removeEditNotice();
+    editingMessageIndex = null;
+    messageInput.value = '';
+    updateInputPlaceholder();
+    removeEditNotice();
     chat.updatedAt = new Date().toISOString();
-    saveConversations(); renderMessages(chat.messages); renderChatList(); updateContextInfo();
+    saveConversations();
+    renderMessages(chat.messages);
+    renderChatList();
+    updateContextInfo();
     autoResend();
 }
 
 function showEditNotice() {
     removeEditNotice();
-    var n = document.createElement('div'); n.id = 'editNotice'; n.className = 'edit-notice';
-    n.innerHTML = '✏️ 编辑模式 <button id="cancelEditBtn">取消</button>';
-    document.body.appendChild(n);
-    document.getElementById('cancelEditBtn').addEventListener('click', cancelEdit);
+    var notice = document.createElement('div');
+    notice.id = 'editNotice';
+    notice.className = 'edit-notice';
+    notice.innerHTML = '✏️ 编辑模式 <button id="cancelEditBtn">取消</button>';
+    document.body.appendChild(notice);
+    var cancelBtn = document.getElementById('cancelEditBtn');
+    if (cancelBtn) {
+        cancelBtn.onclick = cancelEdit;
+        cancelBtn.addEventListener('touchend', function(e) { e.preventDefault(); cancelEdit(); });
+    }
 }
 
 function removeEditNotice() { var n = document.getElementById('editNotice'); if (n) n.remove(); }
 
-function autoResend() {
+async function autoResend() {
     var chat = conversations.find(function(c) { return c.id === currentChatId; });
-    if (!chat || chat.messages.length === 0) return;
-    if (chat.messages[chat.messages.length - 1].role !== 'user') return;
+    if (!chat || !chat.messages || chat.messages.length === 0) return;
+    var lastMsg = chat.messages[chat.messages.length - 1];
+    if (lastMsg.role !== 'user') return;
 
-    isWaiting = true; sendBtn.disabled = true;
-    var streamEl = createStreamingMessage();
-
-    callAPIStream(chat.messages, function(fullText) {
-        finishStreaming(streamEl, fullText);
-        chat.messages.push({ role: 'assistant', content: fullText });
-        chat.updatedAt = new Date().toISOString();
-        saveConversations(); renderChatList(); updateContextInfo();
-        isWaiting = false; sendBtn.disabled = false;
-    }, function(err) {
-        if (streamEl) streamEl.remove();
-        isWaiting = false; sendBtn.disabled = false;
-        showToast('错误: ' + err);
-    });
+    isWaiting = true; sendBtn.disabled = true; showTyping();
+    try {
+        var r = await callAPI(chat.messages);
+        removeTyping();
+        if (r) {
+            chat.messages.push({ role: 'assistant', content: r.content, reasoning: r.reasoning || null });
+            chat.updatedAt = new Date().toISOString();
+            saveConversations();
+            renderMessages(chat.messages);
+            renderChatList();
+            updateContextInfo();
+        }
+    } catch (e) {
+        removeTyping();
+        chatContainer.innerHTML += '<div class="message assistant"><div class="bot-avatar"><img src="' + AVATAR_URL + '" alt="助手"></div><div class="message-content">' + esc(e.message) + '</div></div>';
+    } finally { isWaiting = false; sendBtn.disabled = false; }
 }
 
-// ==================== 搜索与列表 ====================
+// ==================== 搜索 ====================
 function handleSearch() { renderChatList(searchInput.value.trim().toLowerCase()); }
 
 function renderChatList(filter) {
     chatList.innerHTML = '';
     var list = filter
-        ? conversations.filter(function(c) { return c.title.toLowerCase().includes(filter) || c.messages.some(function(m) { return m.content.toLowerCase().includes(filter); }); })
+        ? conversations.filter(function(c) {
+            return (c.title || '').toLowerCase().includes(filter) ||
+                (c.messages || []).some(function(m) { return (m.content || '').toLowerCase().includes(filter); });
+          })
         : conversations;
+
     if (!list.length) { chatList.innerHTML = '<div class="no-results">未找到</div>'; return; }
 
     list.forEach(function(chat) {
         var d = document.createElement('div');
         d.className = 'chat-item' + (chat.id === currentChatId ? ' active' : '');
-        var tokens = estimateContextTokens(chat);
-        var title = chat.title;
-        if (filter && !chat.title.toLowerCase().includes(filter)) {
-            var match = chat.messages.find(function(m) { return m.content.toLowerCase().includes(filter); });
-            if (match) title += ' (含:"' + match.content.substring(0, 15) + '...")';
+        var tokens = (chat.tokenUsage && chat.tokenUsage.total_tokens) ? chat.tokenUsage.total_tokens : 0;
+        var title = chat.title || '未命名';
+        if (filter && !title.toLowerCase().includes(filter)) {
+            var match = (chat.messages || []).find(function(m) { return (m.content || '').toLowerCase().includes(filter); });
+            if (match) title += ' (含: "' + (match.content || '').substring(0, 15) + '...")';
         }
 
-        d.innerHTML = '<div class="chat-item-info" data-chat-id="' + chat.id + '">' +
+        d.innerHTML =
+            '<div class="chat-item-info" data-chat-id="' + chat.id + '">' +
             '<div class="chat-item-title">' + (chat.summary ? '📋 ' : '') + esc(title) + '</div>' +
             '<div class="chat-item-meta">' +
             '<span>' + fmtTime(new Date(chat.updatedAt)) + '</span>' +
-            '<span>' + chat.messages.length + '条</span>' +
+            '<span>' + (chat.messages ? chat.messages.length : 0) + '条</span>' +
             (tokens > 0 ? '<span>🔢' + fmtToken(tokens) + '</span>' : '') +
             (chat.parentId ? '<span class="chat-item-branch">🔀</span>' : '') +
+            ((chat.branches || []).length > 0 ? '<span class="chat-item-branch">🌿' + chat.branches.length + '</span>' : '') +
             '</div></div>' +
             '<div class="chat-item-actions">' +
             '<button class="rename-chat" data-chat-id="' + chat.id + '">✏️</button>' +
-            '<button class="delete-chat" data-chat-id="' + chat.id + '">🗑️</button></div>';
+            '<button class="delete-chat" data-chat-id="' + chat.id + '">🗑️</button>' +
+            '</div>';
 
-        d.querySelector('.chat-item-info').addEventListener('click', function() { switchChat(chat.id); closeSidebar(); });
-        d.querySelector('.rename-chat').addEventListener('click', function(e) { e.stopPropagation(); renameChat(chat.id); });
-        d.querySelector('.delete-chat').addEventListener('click', function(e) { e.stopPropagation(); deleteChat(chat.id); });
+        // 点击切换
+        d.querySelector('.chat-item-info').onclick = function() { switchChat(chat.id); closeSidebar(); };
+        d.querySelector('.chat-item-info').addEventListener('touchend', function(e) {
+            e.preventDefault(); switchChat(chat.id); closeSidebar();
+        });
+
+        // 重命名
+        var renameBtn = d.querySelector('.rename-chat');
+        renameBtn.onclick = function(e) { e.stopPropagation(); renameChat(chat.id); };
+        renameBtn.addEventListener('touchend', function(e) { e.stopPropagation(); e.preventDefault(); renameChat(chat.id); });
+
+        // 删除
+        var deleteBtn = d.querySelector('.delete-chat');
+        deleteBtn.onclick = function(e) { e.stopPropagation(); deleteChat(chat.id); };
+        deleteBtn.addEventListener('touchend', function(e) { e.stopPropagation(); e.preventDefault(); deleteChat(chat.id); });
+
         chatList.appendChild(d);
     });
 }
@@ -408,56 +602,75 @@ function renderChatList(filter) {
 function renderMessages(messages) {
     chatContainer.innerHTML = '';
     if (!messages || !messages.length) {
-        chatContainer.innerHTML = '<div class="welcome-message"><div class="bot-avatar"><img src="' + AVATAR_URL + '"></div><div class="message-content">你好！我是 DeepSeek 助手</div></div>';
-        renderTokenStats(); return;
+        chatContainer.innerHTML =
+            '<div class="welcome-message">' +
+            '<div class="bot-avatar"><img src="' + AVATAR_URL + '" alt="助手"></div>' +
+            '<div class="message-content">你好！我是 DeepSeek 助手<br>✏️ 编辑 | 🔄 重生成 | 🔀 分支 | 📋 摘要前文</div>' +
+            '</div>';
+        renderTokenStats();
+        updateContextInfo();
+        return;
     }
 
     var i = 0;
     while (i < messages.length) {
         if (messages[i].role === 'user') {
-            var grp = document.createElement('div'); grp.className = 'message-group';
+            var grp = document.createElement('div');
+            grp.className = 'message-group';
             var isEditing = (i === editingMessageIndex);
-            var isCtx = messages[i].isContext;
-            var ud = document.createElement('div');
-            ud.className = 'message user' + (isEditing ? ' editing' : '') + (isCtx ? ' summary' : '');
-            ud.innerHTML = '<div class="message-content">' + esc(messages[i].content) + '</div>';
-            grp.appendChild(ud);
+            var isContext = messages[i].isContext;
+            var userDiv = document.createElement('div');
+            userDiv.className = 'message user' + (isEditing ? ' editing' : '') + (isContext ? ' summary' : '');
+            userDiv.innerHTML = '<div class="message-content">' + esc(messages[i].content || '') + '</div>';
+            grp.appendChild(userDiv);
 
             if (i + 1 < messages.length && messages[i + 1].role === 'assistant') {
-                var wrap = document.createElement('div'); wrap.className = 'message-collapsible';
+                var wrap = document.createElement('div');
+                wrap.className = 'message-collapsible';
                 var reasoning = messages[i + 1].reasoning;
-                var isSum = messages[i + 1].isSummary;
+                var isSummary = messages[i + 1].isSummary;
 
-                var hdr = document.createElement('div'); hdr.className = 'message-collapsible-header';
-                hdr.innerHTML = '<span class="toggle-icon">▼</span><span>' + (isSum ? '📋 摘要' : '助手回复') + '</span>' +
+                var hdr = document.createElement('div');
+                hdr.className = 'message-collapsible-header';
+                hdr.innerHTML = '<span class="toggle-icon">▼</span><span>' + (isSummary ? '📋 摘要' : '助手回复') + '</span>' +
                     (reasoning ? '<span style="color:var(--warning-color);margin-left:6px;font-size:0.7rem">🧠思考</span>' : '') +
                     '<span style="flex:1"></span><span style="font-size:0.7rem;color:var(--text-muted)">折叠</span>';
 
-                var body = document.createElement('div'); body.className = 'message-collapsible-body';
+                var body = document.createElement('div');
+                body.className = 'message-collapsible-body';
                 if (reasoning) {
-                    var rb = document.createElement('div'); rb.className = 'reasoning-block';
-                    rb.innerHTML = '<div class="reasoning-header" onclick="this.nextElementSibling.classList.toggle(\'hidden\')">🧠 思考过程</div><div class="reasoning-content">' + fmt(reasoning) + '</div>';
+                    var rb = document.createElement('div');
+                    rb.className = 'reasoning-block';
+                    rb.innerHTML = '<div class="reasoning-header" onclick="this.nextElementSibling.classList.toggle(\'hidden\')">🧠 思考过程 <span class="toggle-icon">▼</span></div><div class="reasoning-content">' + fmt(reasoning) + '</div>';
                     body.appendChild(rb);
                 }
-                var ad = document.createElement('div');
-                ad.className = 'message assistant' + (isSum ? ' summary' : '');
-                ad.innerHTML = (isSum ? '' : '<div class="bot-avatar"><img src="' + AVATAR_URL + '"></div>') + '<div class="message-content">' + fmt(messages[i + 1].content) + '</div>';
-                body.appendChild(ad);
 
-                if (!isSum && !isCtx) {
-                    var act = document.createElement('div'); act.className = 'message-actions';
-                    act.innerHTML = '<button class="edit-msg-btn" data-edit-idx="' + i + '">✏️ 编辑</button>' +
+                var assistantDiv = document.createElement('div');
+                assistantDiv.className = 'message assistant' + (isSummary ? ' summary' : '');
+                assistantDiv.innerHTML = (isSummary ? '' : '<div class="bot-avatar"><img src="' + AVATAR_URL + '" alt="助手"></div>') +
+                    '<div class="message-content">' + fmt(messages[i + 1].content || '') + '</div>';
+                body.appendChild(assistantDiv);
+
+                if (!isSummary && !isContext) {
+                    var act = document.createElement('div');
+                    act.className = 'message-actions';
+                    act.innerHTML =
+                        '<button class="edit-msg-btn" data-edit-idx="' + i + '">✏️ 编辑</button>' +
                         '<button class="regenerate-btn" data-idx="' + i + '">🔄 重生成</button>' +
                         '<button class="branch-msg-btn" data-idx="' + i + '">🔀 分支</button>';
                     body.appendChild(act);
                 }
-                hdr.addEventListener('click', function() { body.classList.toggle('hidden'); });
-                wrap.appendChild(hdr); wrap.appendChild(body); grp.appendChild(wrap);
+
+                hdr.onclick = function() { body.classList.toggle('hidden'); hdr.classList.toggle('collapsed'); };
+                wrap.appendChild(hdr);
+                wrap.appendChild(body);
+                grp.appendChild(wrap);
                 i += 2;
             } else {
-                if (!isCtx) {
-                    var act2 = document.createElement('div'); act2.className = 'message-actions';
-                    act2.style.cssText = 'padding-left:0;justify-content:flex-end';
+                if (!isContext) {
+                    var act2 = document.createElement('div');
+                    act2.className = 'message-actions';
+                    act2.style.cssText = 'padding-left:0;justify-content:flex-end;';
                     act2.innerHTML = '<button class="edit-msg-btn" data-edit-idx="' + i + '">✏️ 编辑</button>';
                     grp.appendChild(act2);
                 }
@@ -465,150 +678,173 @@ function renderMessages(messages) {
             }
             chatContainer.appendChild(grp);
         } else {
-            var ad2 = document.createElement('div');
-            ad2.className = 'message assistant' + (messages[i].isSummary ? ' summary' : '');
-            ad2.innerHTML = (messages[i].isSummary ? '' : '<div class="bot-avatar"><img src="' + AVATAR_URL + '"></div>') + '<div class="message-content">' + fmt(messages[i].content) + '</div>';
-            chatContainer.appendChild(ad2);
+            var aDiv = document.createElement('div');
+            aDiv.className = 'message assistant' + (messages[i].isSummary ? ' summary' : '');
+            aDiv.innerHTML = (messages[i].isSummary ? '' : '<div class="bot-avatar"><img src="' + AVATAR_URL + '" alt="助手"></div>') +
+                '<div class="message-content">' + fmt(messages[i].content || '') + '</div>';
+            chatContainer.appendChild(aDiv);
             i++;
         }
     }
-    renderTokenStats(); updateContextInfo(); scrollBottom();
+    renderTokenStats();
+    scrollBottom();
+    updateContextInfo();
 }
 
 function renderTokenStats() {
-    var old = document.getElementById('tokenStats'); if (old) old.remove();
+    var old = document.getElementById('tokenStats');
+    if (old) old.remove();
     var chat = conversations.find(function(c) { return c.id === currentChatId; });
-    if (!chat || !chat.tokenUsage || !chat.tokenUsage.total_tokens) return;
-    var d = document.createElement('div'); d.id = 'tokenStats'; d.className = 'token-stats';
-    var ic = (chat.tokenUsage.prompt_tokens / 1e6 * 1).toFixed(6);
-    var oc = (chat.tokenUsage.completion_tokens / 1e6 * 2).toFixed(6);
-    d.innerHTML = '<div class="token-stats-content">' +
-        '<span class="token-item">📥 ' + fmtToken(chat.tokenUsage.prompt_tokens) + '</span>' +
-        '<span class="token-item">📤 ' + fmtToken(chat.tokenUsage.completion_tokens) + '</span>' +
-        '<span class="token-item">🔢 ' + fmtToken(chat.tokenUsage.total_tokens) + '</span>' +
-        '<span class="token-item token-cost">💰 ¥' + (parseFloat(ic)+parseFloat(oc)).toFixed(6) + '</span></div>';
+    if (!chat) return;
+
+    // 确保有 tokenUsage
+    if (!chat.tokenUsage) {
+        chat.tokenUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+    }
+
+    // 如果 total 为 0 但 messages 不为空，用估算值
+    var totalTokens = chat.tokenUsage.total_tokens;
+    if (totalTokens === 0 && chat.messages && chat.messages.length > 0) {
+        totalTokens = estimateContextTokens(chat);
+    }
+    if (totalTokens === 0) return;
+
+    var promptTokens = chat.tokenUsage.prompt_tokens || 0;
+    var completionTokens = chat.tokenUsage.completion_tokens || 0;
+
+    // 如果 API 返回的为 0，用估算值
+    if (promptTokens === 0 && completionTokens === 0) {
+        promptTokens = Math.floor(totalTokens * 0.7);
+        completionTokens = Math.floor(totalTokens * 0.3);
+    }
+
+    var ic = (promptTokens / 1000000 * 1).toFixed(6);
+    var oc = (completionTokens / 1000000 * 2).toFixed(6);
+    var tc = (parseFloat(ic) + parseFloat(oc)).toFixed(6);
+
+    var d = document.createElement('div');
+    d.id = 'tokenStats';
+    d.className = 'token-stats';
+    d.innerHTML =
+        '<div class="token-stats-content">' +
+        '<span class="token-item">📥 输入 ' + fmtToken(promptTokens) + '</span>' +
+        '<span class="token-item">📤 输出 ' + fmtToken(completionTokens) + '</span>' +
+        '<span class="token-item">🔢 累计 ' + fmtToken(totalTokens) + '</span>' +
+        '<span class="token-item token-cost">💰 ¥' + tc + '</span>' +
+        '</div>';
     chatContainer.appendChild(d);
 }
 
 // ==================== 发送消息 ====================
-function sendMessage() {
+async function sendMessage() {
     if (editingMessageIndex !== null) { confirmEdit(); return; }
     var content = messageInput.value.trim();
     if (!content || isWaiting) return;
-    if (!apiKey) { alert('请先配置 API Key'); configBody.classList.remove('collapsed'); toggleConfig.classList.remove('collapsed'); return; }
+    if (!apiKey) { alert('请先配置 API Key'); configBody.classList.remove('collapsed'); if (toggleConfig) toggleConfig.classList.remove('collapsed'); return; }
 
     var chat = conversations.find(function(c) { return c.id === currentChatId; });
     if (!chat) return;
 
+    // 确保有 tokenUsage
+    if (!chat.tokenUsage) chat.tokenUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+
     chat.modelKey = currentModelKey;
     chat.messages.push({ role: 'user', content: content });
     renderMessages(chat.messages);
-    messageInput.value = ''; autoResize(); removeFilePreview();
+    messageInput.value = '';
+    autoResize();
+    removeFilePreview();
     chat.updatedAt = new Date().toISOString();
-    if (chat.messages.length === 2 && chat.title === '新对话') {
+    if (chat.messages.length === 2 && (chat.title === '新对话' || chat.title === '未命名')) {
         chat.title = content.substring(0, 20) + (content.length > 20 ? '...' : '');
     }
-    saveConversations(); renderChatList();
+    saveConversations();
+    renderChatList();
 
-    isWaiting = true; sendBtn.disabled = true;
-    var streamEl = createStreamingMessage();
-
-    callAPIStream(chat.messages, function(fullText) {
-        finishStreaming(streamEl, fullText);
-        chat.messages.push({ role: 'assistant', content: fullText });
-        chat.updatedAt = new Date().toISOString();
-        saveConversations(); renderChatList(); updateContextInfo();
-        isWaiting = false; sendBtn.disabled = false;
-    }, function(err) {
-        if (streamEl) streamEl.remove();
-        isWaiting = false; sendBtn.disabled = false;
-        chatContainer.innerHTML += '<div class="message assistant"><div class="bot-avatar"><img src="' + AVATAR_URL + '"></div><div class="message-content">❌ ' + esc(err) + '</div></div>';
-    });
+    isWaiting = true; sendBtn.disabled = true; showTyping();
+    try {
+        var r = await callAPI(chat.messages);
+        removeTyping();
+        if (r) {
+            chat.messages.push({ role: 'assistant', content: r.content, reasoning: r.reasoning || null });
+            chat.updatedAt = new Date().toISOString();
+            saveConversations();
+            renderMessages(chat.messages);
+            renderChatList();
+            updateContextInfo();
+        }
+    } catch (e) {
+        removeTyping();
+        chatContainer.innerHTML += '<div class="message assistant"><div class="bot-avatar"><img src="' + AVATAR_URL + '" alt="助手"></div><div class="message-content">' + esc(e.message || '请求失败') + '</div></div>';
+    } finally { isWaiting = false; sendBtn.disabled = false; }
 }
 
-function createStreamingMessage() {
-    var div = document.createElement('div');
-    div.className = 'message assistant'; div.id = 'streamingMessage';
-    div.innerHTML = '<div class="bot-avatar"><img src="' + AVATAR_URL + '"></div><div class="message-content"><span class="streaming-cursor"></span></div>';
-    chatContainer.appendChild(div); scrollBottom();
-    return div;
+async function regenerateMessage(idx) {
+    var chat = conversations.find(function(c) { return c.id === currentChatId; });
+    if (!chat || isWaiting) return;
+    if (idx + 1 < chat.messages.length) chat.messages.splice(idx + 1, 1);
+    chat.messages = chat.messages.slice(0, idx + 1);
+    saveConversations();
+    renderMessages(chat.messages);
+    updateContextInfo();
+
+    isWaiting = true; sendBtn.disabled = true; showTyping();
+    try {
+        var r = await callAPI(chat.messages);
+        removeTyping();
+        if (r) {
+            chat.messages.push({ role: 'assistant', content: r.content, reasoning: r.reasoning || null });
+            chat.updatedAt = new Date().toISOString();
+            saveConversations();
+            renderMessages(chat.messages);
+            renderChatList();
+            updateContextInfo();
+        }
+    } catch (e) {
+        removeTyping();
+        chatContainer.innerHTML += '<div class="message assistant"><div class="bot-avatar"><img src="' + AVATAR_URL + '" alt="助手"></div><div class="message-content">' + esc(e.message || '请求失败') + '</div></div>';
+    } finally { isWaiting = false; sendBtn.disabled = false; }
 }
 
-function finishStreaming(el, text) {
-    if (!el) return;
-    el.querySelector('.message-content').innerHTML = fmt(text);
-    el.removeAttribute('id');
+function branchFromMessage(idx) {
+    if (confirm('从第 ' + (idx + 1) + ' 条消息处创建分支？')) { createNewChat(currentChatId, idx); closeSidebar(); }
 }
 
-// ==================== API 流式 ====================
-function callAPIStream(messages, onDone, onError) {
+// ==================== API ====================
+async function callAPI(messages) {
     var body = {
         model: currentModel,
-        messages: messages.map(function(m) { return { role: m.role, content: m.content }; }),
-        stream: true
+        messages: messages.map(function(m) { return { role: m.role, content: m.content || '' }; }),
+        stream: false
     };
-    if (currentModelKey !== 'reasoner') { body.temperature = 0.7; body.max_tokens = 4096; }
+    if (currentModelKey !== 'reasoner') {
+        body.temperature = 0.7;
+        body.max_tokens = 4096;
+    }
 
-    fetch('https://api.deepseek.com/v1/chat/completions', {
+    var res = await fetch('https://api.deepseek.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
         body: JSON.stringify(body)
-    }).then(function(res) {
-        if (!res.ok) {
-            return res.json().then(function(e) { throw new Error(e.error?.message || 'HTTP ' + res.status); });
-        }
-        var reader = res.body.getReader();
-        var decoder = new TextDecoder();
-        var fullText = '';
-        var streamEl = document.getElementById('streamingMessage');
-        var contentEl = streamEl ? streamEl.querySelector('.message-content') : null;
-
-        function process() {
-            reader.read().then(function(result) {
-                if (result.done) {
-                    if (contentEl) contentEl.innerHTML = fmt(fullText);
-                    var pt = 0;
-                    messages.forEach(function(m) { pt += (m.content || '').length; });
-                    addTokens({ prompt_tokens: Math.ceil(pt * 0.4), completion_tokens: Math.ceil(fullText.length * 0.5), total_tokens: Math.ceil(pt * 0.4 + fullText.length * 0.5) });
-                    onDone(fullText);
-                    return;
-                }
-                var chunk = decoder.decode(result.value, { stream: true });
-                var lines = chunk.split('\n');
-                for (var i = 0; i < lines.length; i++) {
-                    var line = lines[i].trim();
-                    if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                        try {
-                            var data = JSON.parse(line.substring(6));
-                            var delta = data.choices && data.choices[0] && data.choices[0].delta;
-                            if (delta && delta.content) {
-                                fullText += delta.content;
-                                if (contentEl) contentEl.innerHTML = fmt(fullText) + '<span class="streaming-cursor"></span>';
-                            }
-                            if (data.usage) addTokens(data.usage);
-                        } catch(e) {}
-                    }
-                }
-                scrollBottom();
-                process();
-            }).catch(function(err) {
-                if (fullText) {
-                    onDone(fullText);
-                } else {
-                    onError(err.message);
-                }
-            });
-        }
-        process();
-    }).catch(function(err) {
-        onError(err.message);
     });
+
+    if (!res.ok) {
+        var err = await res.json();
+        throw new Error((err.error && err.error.message) || '请求失败');
+    }
+    var data = await res.json();
+    if (data.usage) addTokens(data.usage);
+    var choice = data.choices[0];
+    return {
+        content: choice.message.content,
+        reasoning: choice.message.reasoning_content || null
+    };
 }
 
 function addTokens(u) {
     var chat = conversations.find(function(c) { return c.id === currentChatId; });
     if (chat) {
-        chat.tokenUsage = chat.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+        if (!chat.tokenUsage) chat.tokenUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
         chat.tokenUsage.prompt_tokens += u.prompt_tokens || 0;
         chat.tokenUsage.completion_tokens += u.completion_tokens || 0;
         chat.tokenUsage.total_tokens += u.total_tokens || 0;
@@ -616,45 +852,21 @@ function addTokens(u) {
     }
 }
 
-function regenerateMessage(idx) {
-    var chat = conversations.find(function(c) { return c.id === currentChatId; });
-    if (!chat || isWaiting) return;
-    if (idx + 1 < chat.messages.length) chat.messages.splice(idx + 1, 1);
-    chat.messages = chat.messages.slice(0, idx + 1);
-    saveConversations(); renderMessages(chat.messages); updateContextInfo();
-
-    isWaiting = true; sendBtn.disabled = true;
-    var streamEl = createStreamingMessage();
-    callAPIStream(chat.messages, function(fullText) {
-        finishStreaming(streamEl, fullText);
-        chat.messages.push({ role: 'assistant', content: fullText });
-        chat.updatedAt = new Date().toISOString();
-        saveConversations(); renderChatList(); updateContextInfo();
-        isWaiting = false; sendBtn.disabled = false;
-    }, function(err) {
-        if (streamEl) streamEl.remove();
-        isWaiting = false; sendBtn.disabled = false;
-        showToast('错误: ' + err);
-    });
-}
-
-function branchFromMessage(idx) {
-    if (confirm('从第 ' + (idx + 1) + ' 条消息创建分支？')) { createNewChat(currentChatId, idx); closeSidebar(); }
-}
-
 // ==================== 文件 ====================
 function handleFileSelect(e) {
-    var f = e.target.files[0]; if (!f) return;
-    if (f.size > 10*1024*1024) { alert('文件太大'); fileInput.value = ''; return; }
+    var f = e.target.files[0];
+    if (!f) return;
+    if (f.size > 10 * 1024 * 1024) { alert('文件太大'); fileInput.value = ''; return; }
     currentFile = f; showFilePreview(f); readFileContent(f);
 }
 
 function showFilePreview(f) {
     removeFilePreview();
-    var p = document.createElement('div'); p.className = 'file-preview'; p.id = 'filePreview';
-    p.innerHTML = '<div class="file-preview-info"><span>📄</span><span class="file-preview-name">' + esc(f.name) + '</span></div><button class="file-preview-remove" id="removeFilePreviewBtn">✕</button>';
+    var p = document.createElement('div');
+    p.className = 'file-preview';
+    p.id = 'filePreview';
+    p.innerHTML = '<div class="file-preview-info"><span>📄</span><span class="file-preview-name">' + esc(f.name) + '</span><span class="file-preview-size">' + fmtSize(f.size) + '</span></div><button class="file-preview-remove" onclick="removeFilePreview()">✕</button>';
     document.querySelector('.input-container').parentNode.insertBefore(p, document.querySelector('.input-container'));
-    document.getElementById('removeFilePreviewBtn').addEventListener('click', removeFilePreview);
 }
 
 function removeFilePreview() { var p = document.getElementById('filePreview'); if (p) p.remove(); currentFile = null; fileInput.value = ''; }
@@ -663,66 +875,101 @@ function readFileContent(f) {
     var r = new FileReader();
     var ext = f.name.split('.').pop().toLowerCase();
     var ok = ['txt','md','json','csv','js','py','html','css','xml','yaml','yml','log','sh','java','c','cpp','php','rb','go','rs','ts','tsx','vue','sql','swift','kt'];
+
     r.onload = function(e) {
         var t = '';
         if (ok.includes(ext)) {
-            var ct = e.target.result; if (ct.length > 5000) ct = ct.substring(0, 5000) + '\n...(已截断)';
+            var ct = e.target.result;
+            if (ct.length > 5000) ct = ct.substring(0, 5000) + '\n...(已截断)';
             t = '\n\n--- 文件: ' + f.name + ' ---\n' + ct + '\n--- 文件结束 ---';
         } else {
-            t = '\n\n[文件: ' + f.name + ']';
+            var hints = { pdf:'PDF', doc:'Word', docx:'Word', xlsx:'Excel', png:'图片', jpg:'图片', jpeg:'图片' };
+            t = '\n\n[' + (hints[ext] || '未知') + '文件: ' + f.name + ']';
         }
         messageInput.value += t; messageInput.focus(); autoResize();
     };
+
     ok.includes(ext) ? r.readAsText(f) : (messageInput.value += '\n\n[文件: ' + f.name + ']', messageInput.focus());
 }
 
 // ==================== 导出导入 ====================
 function exportData() {
     var data = { conversations: conversations, apiKey: apiKey, currentModelKey: currentModelKey, exportTime: new Date().toISOString() };
-    var blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-    var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
     a.download = 'deepseek-backup-' + new Date().toISOString().slice(0, 10) + '.json';
-    a.click(); showToast('✅ 已导出');
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('✅ 数据已导出');
 }
 
 function importData(e) {
-    var file = e.target.files[0]; if (!file) return;
+    var file = e.target.files[0];
+    if (!file) return;
     var reader = new FileReader();
     reader.onload = function(ev) {
         try {
             var data = JSON.parse(ev.target.result);
-            if (confirm('导入将覆盖当前数据？')) {
+            if (confirm('导入将覆盖当前所有对话，确定？\n备份时间：' + (data.exportTime || '未知') + '\n对话数：' + (data.conversations ? data.conversations.length : 0))) {
                 if (data.apiKey) { apiKey = data.apiKey; localStorage.setItem('deepseek_api_key', apiKey); apiKeyInput.value = apiKey; }
-                if (data.conversations) { conversations = data.conversations; saveConversations(); }
-                if (data.currentModelKey) { currentModelKey = data.currentModelKey; currentModel = modelList.find(function(m) { return m.key === currentModelKey; }).id; localStorage.setItem('deepseek_model_key', currentModelKey); updateModelBtnText(); renderDropdownActive(); }
-                renderChatList(); if (conversations.length > 0) switchChat(conversations[0].id);
+                if (data.conversations) {
+                    conversations = data.conversations;
+                    // 修复导入数据
+                    conversations.forEach(function(c) {
+                        if (!c.tokenUsage) c.tokenUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+                    });
+                    saveConversations();
+                }
+                if (data.currentModelKey) {
+                    currentModelKey = data.currentModelKey;
+                    currentModel = modelList.find(function(m) { return m.key === currentModelKey; }).id;
+                    localStorage.setItem('deepseek_model_key', currentModelKey);
+                    updateModelBtnText(); renderDropdownActive();
+                }
+                renderChatList();
+                if (conversations.length > 0) switchChat(conversations[0].id);
                 showToast('✅ 已导入');
             }
-        } catch(err) { alert('文件格式错误'); }
+        } catch (err) { alert('❌ 文件格式不正确'); }
     };
-    reader.readAsText(file); e.target.value = '';
+    reader.readAsText(file);
+    e.target.value = '';
 }
 
-// ==================== 工具 ====================
+// ==================== 工具函数 ====================
 function fmt(s) {
     if (!s) return '';
     var f = esc(s);
-    f = f.replace(/```(\w*)\n([\s\S]*?)```/g, function(_, l, c) { return '<pre><code>' + esc(c.trim()) + '</code></pre>'; });
+    f = f.replace(/```(\w*)\n([\s\S]*?)```/g, function(_, l, c) { return '<pre><code>' + esc((c || '').trim()) + '</code></pre>'; });
     f = f.replace(/`([^`]+)`/g, '<code>$1</code>');
     f = f.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     f = f.replace(/\n/g, '<br>');
     return f;
 }
 
-function esc(s) { if (!s) return ''; var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function esc(s) { if (!s && s !== 0) return ''; var d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
 
 function saveApiKey() {
-    var k = apiKeyInput.value.trim(); if (!k) { alert('请输入 API Key'); return; }
+    var k = apiKeyInput.value.trim();
+    if (!k) { alert('请输入 API Key'); return; }
     apiKey = k; localStorage.setItem('deepseek_api_key', apiKey);
-    alert('✅ 已保存'); configBody.classList.add('collapsed'); toggleConfig.classList.add('collapsed');
+    alert('✅ 已保存'); configBody.classList.add('collapsed');
+    if (toggleConfig) toggleConfig.classList.add('collapsed');
 }
 
-function toggleConfigPanel() { configBody.classList.toggle('collapsed'); toggleConfig.classList.toggle('collapsed'); }
+function toggleConfigPanel() { configBody.classList.toggle('collapsed'); if (toggleConfig) toggleConfig.classList.toggle('collapsed'); }
+
+function showTyping() {
+    var d = document.createElement('div');
+    d.className = 'message assistant';
+    d.id = 'typingIndicator';
+    d.innerHTML = '<div class="bot-avatar"><img src="' + AVATAR_URL + '" alt="助手"></div><div class="message-content"><div class="typing-indicator"><span></span><span></span><span></span></div></div>';
+    chatContainer.appendChild(d); scrollBottom();
+}
+
+function removeTyping() { var e = document.getElementById('typingIndicator'); if (e) e.remove(); }
 function openSidebar() { sidebar.classList.add('open'); overlay.classList.add('show'); }
 function closeSidebar() { sidebar.classList.remove('open'); overlay.classList.remove('show'); }
 function autoResize() { messageInput.style.height = 'auto'; messageInput.style.height = Math.min(messageInput.scrollHeight, 100) + 'px'; }
@@ -732,23 +979,29 @@ function showToast(msg) {
     var e = document.getElementById('toast'); if (e) e.remove();
     var t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; t.textContent = msg;
     document.body.appendChild(t);
-    requestAnimationFrame(function() { t.classList.add('show'); setTimeout(function() { t.classList.remove('show'); setTimeout(function() { t.remove(); }, 300); }, 1500); });
+    requestAnimationFrame(function() {
+        t.classList.add('show');
+        setTimeout(function() { t.classList.remove('show'); setTimeout(function() { if (t.parentNode) t.remove(); }, 300); }, 1500);
+    });
 }
 
 function fmtTime(d) {
-    var df = Date.now() - d;
-    if (df < 6e4) return '刚刚';
-    if (df < 36e5) return Math.floor(df/6e4) + '分钟前';
-    if (df < 864e5) return Math.floor(df/36e5) + '小时前';
-    if (df < 6048e5) return Math.floor(df/864e5) + '天前';
-    return (d.getMonth()+1) + '/' + d.getDate();
+    if (!d) return '';
+    var df = Date.now() - d.getTime();
+    if (df < 60000) return '刚刚';
+    if (df < 3600000) return Math.floor(df / 60000) + '分钟前';
+    if (df < 86400000) return Math.floor(df / 3600000) + '小时前';
+    if (df < 604800000) return Math.floor(df / 86400000) + '天前';
+    return (d.getMonth() + 1) + '/' + d.getDate();
 }
 
+function fmtSize(b) { if (b < 1024) return b + ' B'; if (b < 1048576) return (b / 1024).toFixed(1) + ' KB'; return (b / 1048576).toFixed(1) + ' MB'; }
 function fmtToken(c) {
-    if (c >= 1e6) return (c/1e6).toFixed(1) + 'M';
-    if (c >= 1e3) return (c/1e3).toFixed(1) + 'K';
-    return String(c);
+    if (c === undefined || c === null) return '0';
+    if (c >= 1000000) return (c / 1000000).toFixed(1) + 'M';
+    if (c >= 1000) return (c / 1000).toFixed(1) + 'K';
+    return String(Math.floor(c));
 }
 
-// 启动
+// ==================== 启动 ====================
 init();
