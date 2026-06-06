@@ -225,19 +225,21 @@ body {
 /* 模型下拉菜单 */
 .model-dropdown {
     position: absolute;
-    top: 52px;
+    top: 48px;
     right: 14px;
     background: var(--bg-light);
     border: 1px solid var(--border-color);
     border-radius: 10px;
     overflow: hidden;
-    z-index: 100;
+    z-index: 50;
     display: none;
     box-shadow: 0 4px 16px rgba(0,0,0,0.4);
     min-width: 180px;
 }
 
-.model-dropdown.show { display: block; }
+.model-dropdown.show {
+    display: block;
+}
 
 .model-dropdown-item {
     padding: 10px 14px;
@@ -248,7 +250,10 @@ body {
 }
 
 .model-dropdown-item:last-child { border-bottom: none; }
-.model-dropdown-item:hover { background: rgba(255,255,255,0.06); }
+
+.model-dropdown-item:hover {
+    background: rgba(255,255,255,0.06);
+}
 
 .model-dropdown-item.active {
     background: rgba(99,102,241,0.2);
