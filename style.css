@@ -713,20 +713,57 @@ body {
 
 /* 编辑中的消息高亮 */
 .message.user.editing .message-content {
-    border: 2px solid var(--warning-color);
-    box-shadow: 0 0 8px rgba(245, 158, 11, 0.3);
+    border: 2px solid var(--warning-color) !important;
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);
+    animation: pulse-edit 1.5s infinite;
 }
 
-.edit-btn:hover {
-    border-color: var(--warning-color) !important;
-    color: var(--warning-color) !important;
-}/* 编辑中的消息高亮 */
-.message.user.editing .message-content {
-    border: 2px solid var(--warning-color);
-    box-shadow: 0 0 8px rgba(245, 158, 11, 0.3);
+@keyframes pulse-edit {
+    0%, 100% { box-shadow: 0 0 10px rgba(245, 158, 11, 0.4); }
+    50% { box-shadow: 0 0 18px rgba(245, 158, 11, 0.7); }
 }
 
-.edit-btn:hover {
+/* 编辑按钮 */
+.edit-msg-btn {
+    cursor: pointer;
+}
+
+.edit-msg-btn:hover {
     border-color: var(--warning-color) !important;
     color: var(--warning-color) !important;
+    background: rgba(245, 158, 11, 0.1) !important;
+}
+
+/* 编辑提示条 */
+.edit-notice {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--warning-color);
+    color: #000;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.edit-notice button {
+    background: rgba(0,0,0,0.2);
+    border: none;
+    color: #000;
+    padding: 4px 10px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.edit-notice button:hover {
+    background: rgba(0,0,0,0.3);
 }
