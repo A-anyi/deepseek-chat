@@ -63,22 +63,41 @@ function init() {
     fileInput.addEventListener('change', handleFileSelect);
     searchInput.addEventListener('input', handleSearch);
 
-    // 模型切换
-    modelToggleBtn.addEventListener('click', (e) => {
+    // 模型切换按钮 - 修复点击问题
+    modelToggleBtn.addEventListener('click', function(e) {
+        e.preventDefault();
         e.stopPropagation();
-        modelDropdown.classList.toggle('show');
+        const isShowing = modelDropdown.classList.contains('show');
+        if (isShowing) {
+            modelDropdown.classList.remove('show');
+        } else {
+            modelDropdown.classList.add('show');
+        }
     });
 
-    modelDropdown.querySelectorAll('.model-dropdown-item').forEach(item => {
-        item.addEventListener('click', (e) => {
+    // 下拉菜单项点击
+    modelDropdown.querySelectorAll('.model-dropdown-item').forEach(function(item) {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
             e.stopPropagation();
             switchModel(item.dataset.modelKey);
             modelDropdown.classList.remove('show');
         });
     });
 
-    // 点击其他地方关闭下拉
-    document.addEventListener('click', () => modelDropdown.classList.remove('show'));
+    // 点击页面其他地方关闭下拉
+    document.addEventListener('click', function(e) {
+        if (!modelDropdown.contains(e.target) && e.target !== modelToggleBtn) {
+            modelDropdown.classList.remove('show');
+        }
+    });
+
+    // 按 ESC 关闭下拉
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            modelDropdown.classList.remove('show');
+        }
+    });
 
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
