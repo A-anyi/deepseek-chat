@@ -30,7 +30,7 @@
                 <button class="menu-btn" id="menuBtn">☰</button>
                 <h1 id="chatTitle">DeepSeek</h1>
                 <div class="header-actions">
-                    <button class="model-toggle-btn" id="modelToggleBtn" title="切换模型">V4-Pro ▾</button>
+                    <button class="model-toggle-btn" id="modelToggleBtn" title="切换模型">DeepSeek-V3 ▾</button>
                     <button class="branch-btn" id="branchBtn" title="分支对话">🔀</button>
                     <button class="clear-btn" id="clearBtn" title="清空对话">🗑️</button>
                 </div>
@@ -38,9 +38,8 @@
 
             <!-- 模型下拉菜单 -->
             <div class="model-dropdown" id="modelDropdown">
-                <div class="model-dropdown-item active" data-model-key="pro">V4-Pro · 旗舰模型</div>
-                <div class="model-dropdown-item" data-model-key="reasoner">V4-Reasoner · 深度思考</div>
-                <div class="model-dropdown-item" data-model-key="flash">V4-Flash · 轻量快速</div>
+                <div class="model-dropdown-item active" data-model-key="chat">DeepSeek-V3 · 通用对话</div>
+                <div class="model-dropdown-item" data-model-key="reasoner">DeepSeek-R1 · 深度思考</div>
             </div>
 
             <div class="chat-container" id="chatContainer">
@@ -48,9 +47,22 @@
                     <div class="bot-avatar"><img src="deepseek.png" alt="助手"></div>
                     <div class="message-content">
                         你好！我是 DeepSeek 助手<br>
-                        点击 ✏️ 编辑消息 | 🔄 重新生成 | 🔀 分支对话
+                        ✏️ 编辑消息 | 🔄 重新生成 | 🔀 分支 | 📋 摘要前文
                     </div>
                 </div>
+            </div>
+
+            <!-- 快捷工具栏 -->
+            <div class="quick-tools" id="quickTools">
+                <button class="tool-btn" id="summarizeBtn" title="将当前对话压缩为摘要，清空历史以节省token">
+                    📋 摘要前文
+                </button>
+                <button class="tool-btn" id="newFromSummaryBtn" title="基于摘要创建新对话">
+                    🆕 从摘要新建
+                </button>
+                <span class="context-info" id="contextInfo" title="当前对话上下文token估算">
+                    📊 上下文: 0 token
+                </span>
             </div>
 
             <!-- API 配置 -->
@@ -75,7 +87,7 @@
             <div class="input-container">
                 <input type="file" id="fileInput" style="display:none" accept=".txt,.md,.json,.csv,.js,.py,.html,.css,.xml,.yaml,.yml,.log,.sh,.java,.c,.cpp,.php,.rb,.go,.rs,.ts,.tsx,.vue,.sql,.swift,.kt">
                 <button class="attach-btn" id="attachBtn" title="上传文件">📎</button>
-                <textarea id="messageInput" placeholder="输入消息...（Shift+Enter 换行）" rows="1" maxlength="10000"></textarea>
+                <textarea id="messageInput" placeholder="输入消息...（Shift+Enter 换行）" rows="1" maxlength="50000"></textarea>
                 <button class="send-btn" id="sendBtn"><span class="send-icon">➤</span></button>
             </div>
         </div>
