@@ -350,7 +350,6 @@ body {
     border-top-right-radius: 4px;
 }
 
-/* 流式输出光标 */
 .streaming-cursor::after {
     content: '▊';
     animation: blink 1s infinite;
@@ -362,7 +361,6 @@ body {
     51%, 100% { opacity: 0; }
 }
 
-/* 编辑高亮 */
 .message.user.editing .message-content {
     border: 2px solid var(--warning-color) !important;
     box-shadow: 0 0 10px rgba(245,158,11,0.4);
@@ -374,7 +372,6 @@ body {
     50% { box-shadow: 0 0 18px rgba(245,158,11,0.7); }
 }
 
-/* 消息折叠 */
 .message-collapsible {
     border: 1px solid var(--border-color);
     border-radius: 10px;
@@ -408,7 +405,6 @@ body {
 
 .message-collapsible-body.hidden { display: none; }
 
-/* 操作按钮 */
 .message-actions {
     display: flex;
     gap: 4px;
@@ -720,6 +716,144 @@ body {
 
 .no-results { text-align: center; padding: 20px; color: var(--text-muted); font-size: 0.85rem; }
 
+/* ========== 导入对话框 ========== */
+.import-dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 3000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.2s ease;
+    padding: 20px;
+}
+
+.import-dialog {
+    background: var(--bg-light);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 24px;
+    max-width: 420px;
+    width: 100%;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+.import-dialog h3 {
+    font-size: 1.2rem;
+    margin-bottom: 16px;
+    text-align: center;
+}
+
+.import-dialog-info {
+    background: rgba(255,255,255,0.03);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+}
+
+.import-dialog-info p {
+    font-size: 0.85rem;
+    margin-bottom: 6px;
+    color: var(--text-muted);
+}
+
+.import-dialog-info p:last-child { margin-bottom: 0; }
+
+.import-dialog-info strong {
+    color: var(--text-light);
+}
+
+.import-dialog-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.import-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.import-option:hover {
+    background: rgba(255,255,255,0.06);
+}
+
+.import-option:has(input:checked) {
+    background: rgba(99,102,241,0.15);
+    border-color: var(--primary-color);
+}
+
+.import-option input[type="radio"] {
+    margin-top: 2px;
+    accent-color: var(--primary-color);
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.import-option-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.import-option-title {
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.import-option-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.import-dialog-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.import-dialog-btn {
+    flex: 1;
+    padding: 10px;
+    border-radius: 10px;
+    border: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.import-dialog-btn.cancel {
+    background: rgba(255,255,255,0.05);
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+}
+
+.import-dialog-btn.cancel:hover {
+    background: rgba(255,255,255,0.1);
+}
+
+.import-dialog-btn.confirm {
+    background: var(--primary-color);
+    color: white;
+}
+
+.import-dialog-btn.confirm:hover {
+    background: var(--primary-light);
+}
+
 /* 移动端 */
 @media (max-width: 480px) {
     .header h1 { font-size: 1rem; }
@@ -728,6 +862,13 @@ body {
     .chat-item-actions { opacity: 1; }
     .message-actions { opacity: 1; }
     .model-toggle-btn { font-size: 0.72rem; padding: 4px 8px; }
+    .import-dialog {
+        padding: 18px;
+        max-width: 100%;
+    }
+    .import-option {
+        padding: 10px 12px;
+    }
 }
 
 /* 滚动条 */
