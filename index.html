@@ -31,6 +31,7 @@
                 <h1 id="chatTitle">DeepSeek</h1>
                 <div class="header-actions">
                     <button class="model-toggle-btn" id="modelToggleBtn" title="切换模型">V4-Pro ▾</button>
+                    <button class="stop-btn" id="stopBtn" title="停止生成" style="display:none">⏹</button>
                     <button class="branch-btn" id="branchBtn" title="分支对话">🔀</button>
                     <button class="clear-btn" id="clearBtn" title="清空对话">🗑️</button>
                 </div>
@@ -39,8 +40,7 @@
             <!-- 模型下拉菜单 -->
             <div class="model-dropdown" id="modelDropdown">
                 <div class="model-dropdown-item active" data-model-key="pro">V4-Pro · 旗舰模型</div>
-                <div class="model-dropdown-item" data-model-key="reasoner">V4-Reasoner · 深度思考</div>
-                <div class="model-dropdown-item" data-model-key="flash">V4-Flash · 轻量快速</div>
+                <div class="model-dropdown-item" data-model-key="flash">V4-Flash · 极速响应</div>
             </div>
 
             <div class="chat-container" id="chatContainer">
@@ -48,7 +48,7 @@
                     <div class="bot-avatar"><img src="deepseek.png" alt="助手"></div>
                     <div class="message-content">
                         你好！我是 DeepSeek 助手<br>
-                        点击 ✏️ 编辑消息 | 🔄 重新生成 | 🔀 分支对话
+                        流式输出 | ✏️ 编辑消息 | 🔄 重新生成
                     </div>
                 </div>
             </div>
