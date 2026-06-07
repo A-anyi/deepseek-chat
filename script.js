@@ -11,7 +11,6 @@ var streamTimer = null;
 
 var AVATAR_URL = 'deepseek.png';
 
-// 官方模型
 var modelList = [
     { key: 'pro', id: 'deepseek-v4-pro', name: 'V4-Pro', desc: '旗舰模型' },
     { key: 'flash', id: 'deepseek-v4-flash', name: 'V4-Flash', desc: '极速响应' }
@@ -20,7 +19,6 @@ var modelList = [
 var currentModelKey = localStorage.getItem('deepseek_model_key') || 'pro';
 var currentModel = modelList.find(function(m) { return m.key === currentModelKey; }).id;
 
-// DOM
 var chatContainer = document.getElementById('chatContainer');
 var messageInput = document.getElementById('messageInput');
 var sendBtn = document.getElementById('sendBtn');
@@ -148,7 +146,7 @@ function renderDropdownActive() {
 // ==================== 停止 ====================
 function stopGeneration() {
     if (abortController) { abortController.abort(); abortController = null; }
-    if (streamTimer) { clearTimeout(streamTimer); streamTimer = null; }
+    if (streamTimer) { cancelAnimationFrame(streamTimer); streamTimer = null; }
     streamBuffer = '';
     isWaiting = false; sendBtn.disabled = false; stopBtn.style.display = 'none';
     var c = document.querySelector('.streaming-cursor');
@@ -283,7 +281,7 @@ function showEditNotice() {
 
 function removeEditNotice() { var n = document.getElementById('editNotice'); if (n) n.remove(); }
 
-async function autoResend() { doStreamRequest(true); }
+async function autoResend() { doStreamRequest(); }
 
 // ==================== 搜索 ====================
 function handleSearch() { renderChatList(searchInput.value.trim().toLowerCase()); }
@@ -374,11 +372,11 @@ function renderTokenStats() {
     var d = document.createElement('div'); d.id = 'tokenStats'; d.className = 'token-stats';
     var ic = (chat.tokenUsage.prompt_tokens / 1000000 * 1).toFixed(4);
     var oc = (chat.tokenUsage.completion_tokens / 1000000 * 2).toFixed(4);
-    d.innerHTML = '<div class="token-stats-content"><span class="token-item">📥 ' + fmtToken(chat.tokenUsage.prompt_tokens) + '</span><span class="token-item">📤 ' + fmtToken(chat.tokenUsage.completion_tokens) + '</span><span class="token-item">🔢 ' + fmtToken(chat.tokenUsage.total_tokens) + '</span><span class="token-item token-cost">💰 ¥' + (parseFloat(ic) + parseFloat(oc)).toFixed(4) + '</span></div>';
+    d.innerHTML = '<div class="token-stats-content"><span class="token-item">📥 输入 ' + fmtToken(chat.tokenUsage.prompt_tokens) + '</span><span class="token-item">📤 输出 ' + fmtToken(chat.tokenUsage.completion_tokens) + '</span><span class="token-item">🔢 总计 ' + fmtToken(chat.tokenUsage.total_tokens) + '</span><span class="token-item token-cost">💰 ¥' + (parseFloat(ic) + parseFloat(oc)).toFixed(4) + '</span></div>';
     chatContainer.appendChild(d);
 }
 
-// ==================== 发送消息（流式） ====================
+// ==================== 发送 ====================
 async function sendMessage() {
     if (editingMessageIndex !== null) { confirmEdit(); return; }
     var content = messageInput.value.trim();
@@ -396,7 +394,7 @@ async function sendMessage() {
     if (chat.messages.length === 2 && chat.title === '新对话') chat.title = content.substring(0, 20) + (content.length > 20 ? '...' : '');
     saveConversations(); renderChatList();
 
-    doStreamRequest(false);
+    doStreamRequest();
 }
 
 async function regenerateMessage(idx) {
@@ -405,15 +403,15 @@ async function regenerateMessage(idx) {
     if (idx + 1 < chat.messages.length) chat.messages.splice(idx + 1, 1);
     chat.messages = chat.messages.slice(0, idx + 1);
     saveConversations(); renderMessages(chat.messages);
-    doStreamRequest(false);
+    doStreamRequest();
 }
 
 function branchFromMessage(idx) {
     if (confirm('从第 ' + (idx + 1) + ' 条消息处创建分支？')) { createNewChat(currentChatId, idx); closeSidebar(); }
 }
 
-// ==================== 核心：流式请求 + 逐字渲染 ====================
-function doStreamRequest(isEdit) {
+// ==================== 流式请求 + 逐字渲染 ====================
+function doStreamRequest() {
     var chat = conversations.find(function(c) { return c.id === currentChatId; });
     if (!chat || !chat.messages.length) return;
     var lm = chat.messages[chat.messages.length - 1];
@@ -423,38 +421,44 @@ function doStreamRequest(isEdit) {
     sendBtn.disabled = true;
     stopBtn.style.display = 'inline-block';
 
-    // 创建空的助手消息
     chat.messages.push({ role: 'assistant', content: '', reasoning: null });
     renderMessages(chat.messages);
 
-    // 获取最后一个助手消息的内容元素
     var contentEl = chatContainer.querySelector('.message.assistant:last-of-type .message-content');
     if (contentEl) {
         contentEl.classList.add('streaming-cursor');
-        contentEl.setAttribute('data-streaming', 'true');
     }
 
     streamBuffer = '';
     abortController = new AbortController();
 
-    // 启动流式请求
-    callAPIStream(chat.messages.slice(0, -1), function(chunk) {
-        // 累积到缓冲区
-        streamBuffer += chunk;
+    // 用于收集 usage 信息
+    var finalUsage = null;
 
-        // 用 requestAnimationFrame 节流，保证移动端流畅
+    callAPIStream(chat.messages.slice(0, -1), function(chunk) {
+        streamBuffer += chunk;
         if (!streamTimer) {
             streamTimer = requestAnimationFrame(function() {
                 flushStreamBuffer(chat, contentEl);
             });
         }
-    }, abortController.signal).then(function(result) {
-        // 流结束，刷新剩余缓冲区
+    }, function(usage) {
+        // 收到 usage 信息
+        finalUsage = usage;
+    }, abortController.signal).then(function() {
         flushStreamBufferFinal(chat, contentEl);
         if (contentEl) {
             contentEl.classList.remove('streaming-cursor');
-            contentEl.removeAttribute('data-streaming');
         }
+
+        // 应用 token 统计
+        if (finalUsage) {
+            chat.tokenUsage = chat.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+            chat.tokenUsage.prompt_tokens += finalUsage.prompt_tokens || 0;
+            chat.tokenUsage.completion_tokens += finalUsage.completion_tokens || 0;
+            chat.tokenUsage.total_tokens += finalUsage.total_tokens || 0;
+        }
+
         chat.updatedAt = new Date().toISOString();
         saveConversations();
         renderMessages(chat.messages);
@@ -465,13 +469,16 @@ function doStreamRequest(isEdit) {
         abortController = null;
     }).catch(function(e) {
         if (streamTimer) { cancelAnimationFrame(streamTimer); streamTimer = null; }
-        if (contentEl) {
-            contentEl.classList.remove('streaming-cursor');
-            contentEl.removeAttribute('data-streaming');
-        }
+        if (contentEl) { contentEl.classList.remove('streaming-cursor'); }
         if (e.name === 'AbortError') {
-            // 保留已生成内容
             flushStreamBufferFinal(chat, contentEl);
+            // 即使中止，也尝试应用可能收到的 usage
+            if (finalUsage) {
+                chat.tokenUsage = chat.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+                chat.tokenUsage.prompt_tokens += finalUsage.prompt_tokens || 0;
+                chat.tokenUsage.completion_tokens += finalUsage.completion_tokens || 0;
+                chat.tokenUsage.total_tokens += finalUsage.total_tokens || 0;
+            }
             chat.updatedAt = new Date().toISOString();
             saveConversations();
             renderMessages(chat.messages);
@@ -487,31 +494,21 @@ function doStreamRequest(isEdit) {
     });
 }
 
-// 用 requestAnimationFrame 刷新缓冲区（约 16ms 一次，适配 60fps 屏幕）
 function flushStreamBuffer(chat, contentEl) {
     streamTimer = null;
     if (!streamBuffer) return;
-
     var chunk = streamBuffer;
     streamBuffer = '';
-
     var lastMsg = chat.messages[chat.messages.length - 1];
     if (lastMsg && lastMsg.role === 'assistant') {
         lastMsg.content += chunk;
     }
-
-    // 直接更新 DOM，不做完整重渲染
     if (contentEl) {
-        // 使用 textContent 更新原始文本，避免 XSS
-        // 但要支持 Markdown，所以用 innerHTML
         contentEl.innerHTML = fmt(lastMsg.content);
     }
-
-    // 平滑滚动到底部
     smoothScrollToBottom();
 }
 
-// 最终刷新
 function flushStreamBufferFinal(chat, contentEl) {
     if (streamTimer) { cancelAnimationFrame(streamTimer); streamTimer = null; }
     if (streamBuffer) {
@@ -527,13 +524,11 @@ function flushStreamBufferFinal(chat, contentEl) {
     }
 }
 
-// 平滑滚动
 var scrollRAF = null;
 function smoothScrollToBottom() {
     if (scrollRAF) return;
     scrollRAF = requestAnimationFrame(function() {
         scrollRAF = null;
-        // 检查用户是否在底部附近（允许 200px 误差）
         var threshold = 200;
         var isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < threshold;
         if (isNearBottom) {
@@ -542,8 +537,8 @@ function smoothScrollToBottom() {
     });
 }
 
-// ==================== API 流式调用 ====================
-async function callAPIStream(messages, onChunk, signal) {
+// ==================== API 流式（含 usage 提取） ====================
+async function callAPIStream(messages, onChunk, onUsage, signal) {
     var body = {
         model: currentModel,
         messages: messages.map(function(m) { return { role: m.role, content: m.content }; }),
@@ -567,22 +562,38 @@ async function callAPIStream(messages, onChunk, signal) {
 
     var reader = res.body.getReader();
     var decoder = new TextDecoder();
-    var leftover = '';
+    var buffer = '';
 
     while (true) {
         var chunk = await reader.read();
         if (chunk.done) break;
 
-        var text = decoder.decode(chunk.value, { stream: true });
-        leftover += text;
-        var lines = leftover.split('\n');
-        leftover = lines.pop() || '';
+        buffer += decoder.decode(chunk.value, { stream: true });
+        var lines = buffer.split('\n');
+        // 保留最后一个可能不完整的行
+        buffer = lines.pop() || '';
 
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i].trim();
             if (!line || !line.startsWith('data: ')) continue;
             var dataStr = line.slice(6);
-            if (dataStr === '[DONE]') break;
+
+            if (dataStr === '[DONE]') {
+                // [DONE] 之前的一行通常包含 usage 信息
+                // 检查前一行
+                if (i > 0) {
+                    var prevLine = lines[i - 1].trim();
+                    if (prevLine.startsWith('data: ')) {
+                        try {
+                            var prevData = JSON.parse(prevLine.slice(6));
+                            if (prevData.usage) {
+                                onUsage(prevData.usage);
+                            }
+                        } catch (e) {}
+                    }
+                }
+                continue;
+            }
 
             try {
                 var parsed = JSON.parse(dataStr);
@@ -590,23 +601,24 @@ async function callAPIStream(messages, onChunk, signal) {
                 if (delta && delta.content) {
                     onChunk(delta.content);
                 }
-            } catch (e) {
-                // 跳过无法解析的行
-            }
+                // 有些实现中每个 chunk 都可能包含 usage
+                if (parsed.usage) {
+                    onUsage(parsed.usage);
+                }
+            } catch (e) {}
         }
     }
 
-    // 处理最后的 leftover
-    if (leftover.trim() && leftover.trim().startsWith('data: ') && leftover.trim() !== 'data: [DONE]') {
+    // 处理缓冲区中剩余的数据
+    if (buffer.trim() && buffer.trim().startsWith('data: ') && buffer.trim() !== 'data: [DONE]') {
         try {
-            var ds = leftover.trim().slice(6);
+            var ds = buffer.trim().slice(6);
             var parsed = JSON.parse(ds);
             var delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
             if (delta && delta.content) onChunk(delta.content);
+            if (parsed.usage) onUsage(parsed.usage);
         } catch (e) {}
     }
-
-    return {};
 }
 
 // ==================== 文件处理 ====================
@@ -677,7 +689,7 @@ function importData(e) {
     reader.readAsText(file); e.target.value = '';
 }
 
-// ==================== 工具函数 ====================
+// ==================== 工具 ====================
 function fmt(s) {
     if (!s) return '';
     var f = esc(s);
