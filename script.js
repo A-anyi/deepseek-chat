@@ -6,10 +6,12 @@ var isWaiting = false;
 var currentFile = null;
 var editingMessageIndex = null;
 var abortController = null;
+var streamBuffer = '';
+var streamTimer = null;
 
 var AVATAR_URL = 'deepseek.png';
 
-// 官方最新模型
+// 官方模型
 var modelList = [
     { key: 'pro', id: 'deepseek-v4-pro', name: 'V4-Pro', desc: '旗舰模型' },
     { key: 'flash', id: 'deepseek-v4-flash', name: 'V4-Flash', desc: '极速响应' }
@@ -146,6 +148,8 @@ function renderDropdownActive() {
 // ==================== 停止 ====================
 function stopGeneration() {
     if (abortController) { abortController.abort(); abortController = null; }
+    if (streamTimer) { clearTimeout(streamTimer); streamTimer = null; }
+    streamBuffer = '';
     isWaiting = false; sendBtn.disabled = false; stopBtn.style.display = 'none';
     var c = document.querySelector('.streaming-cursor');
     if (c) c.classList.remove('streaming-cursor');
@@ -279,40 +283,7 @@ function showEditNotice() {
 
 function removeEditNotice() { var n = document.getElementById('editNotice'); if (n) n.remove(); }
 
-async function autoResend() {
-    var chat = conversations.find(function(c) { return c.id === currentChatId; });
-    if (!chat || !chat.messages.length) return;
-    var lm = chat.messages[chat.messages.length - 1];
-    if (lm.role !== 'user') return;
-
-    isWaiting = true; sendBtn.disabled = true; stopBtn.style.display = 'inline-block';
-    chat.messages.push({ role: 'assistant', content: '', reasoning: null });
-    renderMessages(chat.messages);
-    var el = document.querySelector('.message.assistant:last-of-type .message-content');
-    if (el) el.classList.add('streaming-cursor');
-    abortController = new AbortController();
-
-    try {
-        var r = await callAPIStream(chat.messages.slice(0, -1), function(chunk) {
-            var lm = chat.messages[chat.messages.length - 1];
-            if (lm.role === 'assistant') { lm.content += chunk; if (el) el.innerHTML = fmt(lm.content); }
-            scrollBottom();
-        }, abortController.signal);
-        if (el) el.classList.remove('streaming-cursor');
-        if (r && r.reasoning) chat.messages[chat.messages.length - 1].reasoning = r.reasoning;
-        chat.updatedAt = new Date().toISOString();
-        saveConversations(); renderMessages(chat.messages); renderChatList();
-    } catch (e) {
-        if (el) el.classList.remove('streaming-cursor');
-        if (e.name === 'AbortError') {
-            chat.updatedAt = new Date().toISOString();
-            saveConversations(); renderMessages(chat.messages); renderChatList();
-        } else {
-            chat.messages.pop();
-            chatContainer.innerHTML += '<div class="message assistant"><div class="bot-avatar"><img src="' + AVATAR_URL + '"></div><div class="message-content">' + esc(e.message) + '</div></div>';
-        }
-    } finally { isWaiting = false; sendBtn.disabled = false; stopBtn.style.display = 'none'; abortController = null; }
-}
+async function autoResend() { doStreamRequest(true); }
 
 // ==================== 搜索 ====================
 function handleSearch() { renderChatList(searchInput.value.trim().toLowerCase()); }
@@ -407,14 +378,16 @@ function renderTokenStats() {
     chatContainer.appendChild(d);
 }
 
-// ==================== 发送 ====================
+// ==================== 发送消息（流式） ====================
 async function sendMessage() {
     if (editingMessageIndex !== null) { confirmEdit(); return; }
     var content = messageInput.value.trim();
     if (!content || isWaiting) return;
     if (!apiKey) { alert('请先配置 API Key'); configBody.classList.remove('collapsed'); toggleConfig.classList.remove('collapsed'); return; }
+
     var chat = conversations.find(function(c) { return c.id === currentChatId; });
     if (!chat) return;
+
     chat.modelKey = currentModelKey;
     chat.messages.push({ role: 'user', content: content });
     renderMessages(chat.messages);
@@ -423,32 +396,7 @@ async function sendMessage() {
     if (chat.messages.length === 2 && chat.title === '新对话') chat.title = content.substring(0, 20) + (content.length > 20 ? '...' : '');
     saveConversations(); renderChatList();
 
-    isWaiting = true; sendBtn.disabled = true; stopBtn.style.display = 'inline-block';
-    chat.messages.push({ role: 'assistant', content: '', reasoning: null });
-    renderMessages(chat.messages);
-    var el = document.querySelector('.message.assistant:last-of-type .message-content');
-    if (el) el.classList.add('streaming-cursor');
-    abortController = new AbortController();
-
-    try {
-        var r = await callAPIStream(chat.messages.slice(0, -1), function(chunk) {
-            var lm = chat.messages[chat.messages.length - 1];
-            if (lm.role === 'assistant') { lm.content += chunk; if (el) el.innerHTML = fmt(lm.content); }
-            scrollBottom();
-        }, abortController.signal);
-        if (el) el.classList.remove('streaming-cursor');
-        chat.updatedAt = new Date().toISOString();
-        saveConversations(); renderMessages(chat.messages); renderChatList();
-    } catch (e) {
-        if (el) el.classList.remove('streaming-cursor');
-        if (e.name === 'AbortError') {
-            chat.updatedAt = new Date().toISOString();
-            saveConversations(); renderMessages(chat.messages); renderChatList();
-        } else {
-            chat.messages.pop();
-            chatContainer.innerHTML += '<div class="message assistant"><div class="bot-avatar"><img src="' + AVATAR_URL + '"></div><div class="message-content">' + esc(e.message) + '</div></div>';
-        }
-    } finally { isWaiting = false; sendBtn.disabled = false; stopBtn.style.display = 'none'; abortController = null; }
+    doStreamRequest(false);
 }
 
 async function regenerateMessage(idx) {
@@ -457,38 +405,144 @@ async function regenerateMessage(idx) {
     if (idx + 1 < chat.messages.length) chat.messages.splice(idx + 1, 1);
     chat.messages = chat.messages.slice(0, idx + 1);
     saveConversations(); renderMessages(chat.messages);
-
-    isWaiting = true; sendBtn.disabled = true; stopBtn.style.display = 'inline-block';
-    chat.messages.push({ role: 'assistant', content: '', reasoning: null });
-    renderMessages(chat.messages);
-    var el = document.querySelector('.message.assistant:last-of-type .message-content');
-    if (el) el.classList.add('streaming-cursor');
-    abortController = new AbortController();
-
-    try {
-        var r = await callAPIStream(chat.messages.slice(0, -1), function(chunk) {
-            var lm = chat.messages[chat.messages.length - 1];
-            if (lm.role === 'assistant') { lm.content += chunk; if (el) el.innerHTML = fmt(lm.content); }
-            scrollBottom();
-        }, abortController.signal);
-        if (el) el.classList.remove('streaming-cursor');
-        chat.updatedAt = new Date().toISOString();
-        saveConversations(); renderMessages(chat.messages); renderChatList();
-    } catch (e) {
-        if (el) el.classList.remove('streaming-cursor');
-        if (e.name === 'AbortError') {
-            chat.updatedAt = new Date().toISOString();
-            saveConversations(); renderMessages(chat.messages); renderChatList();
-        } else {
-            chat.messages.pop();
-            chatContainer.innerHTML += '<div class="message assistant"><div class="bot-avatar"><img src="' + AVATAR_URL + '"></div><div class="message-content">' + esc(e.message) + '</div></div>';
-        }
-    } finally { isWaiting = false; sendBtn.disabled = false; stopBtn.style.display = 'none'; abortController = null; }
+    doStreamRequest(false);
 }
 
-function branchFromMessage(idx) { if (confirm('从第 ' + (idx + 1) + ' 条消息处创建分支？')) { createNewChat(currentChatId, idx); closeSidebar(); } }
+function branchFromMessage(idx) {
+    if (confirm('从第 ' + (idx + 1) + ' 条消息处创建分支？')) { createNewChat(currentChatId, idx); closeSidebar(); }
+}
 
-// ==================== API 流式 ====================
+// ==================== 核心：流式请求 + 逐字渲染 ====================
+function doStreamRequest(isEdit) {
+    var chat = conversations.find(function(c) { return c.id === currentChatId; });
+    if (!chat || !chat.messages.length) return;
+    var lm = chat.messages[chat.messages.length - 1];
+    if (lm.role !== 'user') return;
+
+    isWaiting = true;
+    sendBtn.disabled = true;
+    stopBtn.style.display = 'inline-block';
+
+    // 创建空的助手消息
+    chat.messages.push({ role: 'assistant', content: '', reasoning: null });
+    renderMessages(chat.messages);
+
+    // 获取最后一个助手消息的内容元素
+    var contentEl = chatContainer.querySelector('.message.assistant:last-of-type .message-content');
+    if (contentEl) {
+        contentEl.classList.add('streaming-cursor');
+        contentEl.setAttribute('data-streaming', 'true');
+    }
+
+    streamBuffer = '';
+    abortController = new AbortController();
+
+    // 启动流式请求
+    callAPIStream(chat.messages.slice(0, -1), function(chunk) {
+        // 累积到缓冲区
+        streamBuffer += chunk;
+
+        // 用 requestAnimationFrame 节流，保证移动端流畅
+        if (!streamTimer) {
+            streamTimer = requestAnimationFrame(function() {
+                flushStreamBuffer(chat, contentEl);
+            });
+        }
+    }, abortController.signal).then(function(result) {
+        // 流结束，刷新剩余缓冲区
+        flushStreamBufferFinal(chat, contentEl);
+        if (contentEl) {
+            contentEl.classList.remove('streaming-cursor');
+            contentEl.removeAttribute('data-streaming');
+        }
+        chat.updatedAt = new Date().toISOString();
+        saveConversations();
+        renderMessages(chat.messages);
+        renderChatList();
+        isWaiting = false;
+        sendBtn.disabled = false;
+        stopBtn.style.display = 'none';
+        abortController = null;
+    }).catch(function(e) {
+        if (streamTimer) { cancelAnimationFrame(streamTimer); streamTimer = null; }
+        if (contentEl) {
+            contentEl.classList.remove('streaming-cursor');
+            contentEl.removeAttribute('data-streaming');
+        }
+        if (e.name === 'AbortError') {
+            // 保留已生成内容
+            flushStreamBufferFinal(chat, contentEl);
+            chat.updatedAt = new Date().toISOString();
+            saveConversations();
+            renderMessages(chat.messages);
+            renderChatList();
+        } else {
+            chat.messages.pop();
+            chatContainer.innerHTML += '<div class="message assistant"><div class="bot-avatar"><img src="' + AVATAR_URL + '"></div><div class="message-content">❌ ' + esc(e.message) + '</div></div>';
+        }
+        isWaiting = false;
+        sendBtn.disabled = false;
+        stopBtn.style.display = 'none';
+        abortController = null;
+    });
+}
+
+// 用 requestAnimationFrame 刷新缓冲区（约 16ms 一次，适配 60fps 屏幕）
+function flushStreamBuffer(chat, contentEl) {
+    streamTimer = null;
+    if (!streamBuffer) return;
+
+    var chunk = streamBuffer;
+    streamBuffer = '';
+
+    var lastMsg = chat.messages[chat.messages.length - 1];
+    if (lastMsg && lastMsg.role === 'assistant') {
+        lastMsg.content += chunk;
+    }
+
+    // 直接更新 DOM，不做完整重渲染
+    if (contentEl) {
+        // 使用 textContent 更新原始文本，避免 XSS
+        // 但要支持 Markdown，所以用 innerHTML
+        contentEl.innerHTML = fmt(lastMsg.content);
+    }
+
+    // 平滑滚动到底部
+    smoothScrollToBottom();
+}
+
+// 最终刷新
+function flushStreamBufferFinal(chat, contentEl) {
+    if (streamTimer) { cancelAnimationFrame(streamTimer); streamTimer = null; }
+    if (streamBuffer) {
+        var lastMsg = chat.messages[chat.messages.length - 1];
+        if (lastMsg && lastMsg.role === 'assistant') {
+            lastMsg.content += streamBuffer;
+        }
+        streamBuffer = '';
+    }
+    if (contentEl) {
+        var lastMsg = chat.messages[chat.messages.length - 1];
+        contentEl.innerHTML = fmt(lastMsg ? lastMsg.content : '');
+    }
+}
+
+// 平滑滚动
+var scrollRAF = null;
+function smoothScrollToBottom() {
+    if (scrollRAF) return;
+    scrollRAF = requestAnimationFrame(function() {
+        scrollRAF = null;
+        // 检查用户是否在底部附近（允许 200px 误差）
+        var threshold = 200;
+        var isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < threshold;
+        if (isNearBottom) {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+    });
+}
+
+// ==================== API 流式调用 ====================
 async function callAPIStream(messages, onChunk, signal) {
     var body = {
         model: currentModel,
@@ -505,34 +559,57 @@ async function callAPIStream(messages, onChunk, signal) {
         signal: signal
     });
 
-    if (!res.ok) { var err = await res.json(); throw new Error(err.error?.message || '请求失败'); }
+    if (!res.ok) {
+        var errText = '';
+        try { var err = await res.json(); errText = err.error?.message || ''; } catch (e) {}
+        throw new Error(errText || '请求失败 (' + res.status + ')');
+    }
 
     var reader = res.body.getReader();
     var decoder = new TextDecoder();
-    var buffer = '';
+    var leftover = '';
 
     while (true) {
-        var result = await reader.read();
-        if (result.done) break;
-        if (result.value) buffer += decoder.decode(result.value, { stream: true });
-        var lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+        var chunk = await reader.read();
+        if (chunk.done) break;
+
+        var text = decoder.decode(chunk.value, { stream: true });
+        leftover += text;
+        var lines = leftover.split('\n');
+        leftover = lines.pop() || '';
+
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i].trim();
             if (!line || !line.startsWith('data: ')) continue;
-            var ds = line.slice(6);
-            if (ds === '[DONE]') continue;
+            var dataStr = line.slice(6);
+            if (dataStr === '[DONE]') break;
+
             try {
-                var parsed = JSON.parse(ds);
+                var parsed = JSON.parse(dataStr);
                 var delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
-                if (delta && delta.content) onChunk(delta.content);
-            } catch (e) {}
+                if (delta && delta.content) {
+                    onChunk(delta.content);
+                }
+            } catch (e) {
+                // 跳过无法解析的行
+            }
         }
     }
+
+    // 处理最后的 leftover
+    if (leftover.trim() && leftover.trim().startsWith('data: ') && leftover.trim() !== 'data: [DONE]') {
+        try {
+            var ds = leftover.trim().slice(6);
+            var parsed = JSON.parse(ds);
+            var delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
+            if (delta && delta.content) onChunk(delta.content);
+        } catch (e) {}
+    }
+
     return {};
 }
 
-// ==================== 文件 ====================
+// ==================== 文件处理 ====================
 function handleFileSelect(e) {
     var f = e.target.files[0]; if (!f) return;
     if (f.size > 10 * 1024 * 1024) { alert('文件太大'); fileInput.value = ''; return; }
@@ -600,7 +677,7 @@ function importData(e) {
     reader.readAsText(file); e.target.value = '';
 }
 
-// ==================== 工具 ====================
+// ==================== 工具函数 ====================
 function fmt(s) {
     if (!s) return '';
     var f = esc(s);
