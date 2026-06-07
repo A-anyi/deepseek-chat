@@ -410,7 +410,7 @@ function branchFromMessage(idx) {
     if (confirm('从第 ' + (idx + 1) + ' 条消息处创建分支？')) { createNewChat(currentChatId, idx); closeSidebar(); }
 }
 
-// ==================== 流式请求 + 逐字渲染 ====================
+// ==================== 流式请求 ====================
 function doStreamRequest() {
     var chat = conversations.find(function(c) { return c.id === currentChatId; });
     if (!chat || !chat.messages.length) return;
@@ -425,14 +425,10 @@ function doStreamRequest() {
     renderMessages(chat.messages);
 
     var contentEl = chatContainer.querySelector('.message.assistant:last-of-type .message-content');
-    if (contentEl) {
-        contentEl.classList.add('streaming-cursor');
-    }
+    if (contentEl) contentEl.classList.add('streaming-cursor');
 
     streamBuffer = '';
     abortController = new AbortController();
-
-    // 用于收集 usage 信息
     var finalUsage = null;
 
     callAPIStream(chat.messages.slice(0, -1), function(chunk) {
@@ -443,15 +439,11 @@ function doStreamRequest() {
             });
         }
     }, function(usage) {
-        // 收到 usage 信息
         finalUsage = usage;
     }, abortController.signal).then(function() {
         flushStreamBufferFinal(chat, contentEl);
-        if (contentEl) {
-            contentEl.classList.remove('streaming-cursor');
-        }
+        if (contentEl) contentEl.classList.remove('streaming-cursor');
 
-        // 应用 token 统计
         if (finalUsage) {
             chat.tokenUsage = chat.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
             chat.tokenUsage.prompt_tokens += finalUsage.prompt_tokens || 0;
@@ -469,10 +461,9 @@ function doStreamRequest() {
         abortController = null;
     }).catch(function(e) {
         if (streamTimer) { cancelAnimationFrame(streamTimer); streamTimer = null; }
-        if (contentEl) { contentEl.classList.remove('streaming-cursor'); }
+        if (contentEl) contentEl.classList.remove('streaming-cursor');
         if (e.name === 'AbortError') {
             flushStreamBufferFinal(chat, contentEl);
-            // 即使中止，也尝试应用可能收到的 usage
             if (finalUsage) {
                 chat.tokenUsage = chat.tokenUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
                 chat.tokenUsage.prompt_tokens += finalUsage.prompt_tokens || 0;
@@ -500,12 +491,8 @@ function flushStreamBuffer(chat, contentEl) {
     var chunk = streamBuffer;
     streamBuffer = '';
     var lastMsg = chat.messages[chat.messages.length - 1];
-    if (lastMsg && lastMsg.role === 'assistant') {
-        lastMsg.content += chunk;
-    }
-    if (contentEl) {
-        contentEl.innerHTML = fmt(lastMsg.content);
-    }
+    if (lastMsg && lastMsg.role === 'assistant') lastMsg.content += chunk;
+    if (contentEl) contentEl.innerHTML = fmt(lastMsg.content);
     smoothScrollToBottom();
 }
 
@@ -513,9 +500,7 @@ function flushStreamBufferFinal(chat, contentEl) {
     if (streamTimer) { cancelAnimationFrame(streamTimer); streamTimer = null; }
     if (streamBuffer) {
         var lastMsg = chat.messages[chat.messages.length - 1];
-        if (lastMsg && lastMsg.role === 'assistant') {
-            lastMsg.content += streamBuffer;
-        }
+        if (lastMsg && lastMsg.role === 'assistant') lastMsg.content += streamBuffer;
         streamBuffer = '';
     }
     if (contentEl) {
@@ -531,13 +516,11 @@ function smoothScrollToBottom() {
         scrollRAF = null;
         var threshold = 200;
         var isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < threshold;
-        if (isNearBottom) {
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
+        if (isNearBottom) chatContainer.scrollTop = chatContainer.scrollHeight;
     });
 }
 
-// ==================== API 流式（含 usage 提取） ====================
+// ==================== API 流式 ====================
 async function callAPIStream(messages, onChunk, onUsage, signal) {
     var body = {
         model: currentModel,
@@ -570,7 +553,6 @@ async function callAPIStream(messages, onChunk, onUsage, signal) {
 
         buffer += decoder.decode(chunk.value, { stream: true });
         var lines = buffer.split('\n');
-        // 保留最后一个可能不完整的行
         buffer = lines.pop() || '';
 
         for (var i = 0; i < lines.length; i++) {
@@ -579,16 +561,12 @@ async function callAPIStream(messages, onChunk, onUsage, signal) {
             var dataStr = line.slice(6);
 
             if (dataStr === '[DONE]') {
-                // [DONE] 之前的一行通常包含 usage 信息
-                // 检查前一行
                 if (i > 0) {
                     var prevLine = lines[i - 1].trim();
                     if (prevLine.startsWith('data: ')) {
                         try {
                             var prevData = JSON.parse(prevLine.slice(6));
-                            if (prevData.usage) {
-                                onUsage(prevData.usage);
-                            }
+                            if (prevData.usage) onUsage(prevData.usage);
                         } catch (e) {}
                     }
                 }
@@ -598,18 +576,12 @@ async function callAPIStream(messages, onChunk, onUsage, signal) {
             try {
                 var parsed = JSON.parse(dataStr);
                 var delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
-                if (delta && delta.content) {
-                    onChunk(delta.content);
-                }
-                // 有些实现中每个 chunk 都可能包含 usage
-                if (parsed.usage) {
-                    onUsage(parsed.usage);
-                }
+                if (delta && delta.content) onChunk(delta.content);
+                if (parsed.usage) onUsage(parsed.usage);
             } catch (e) {}
         }
     }
 
-    // 处理缓冲区中剩余的数据
     if (buffer.trim() && buffer.trim().startsWith('data: ') && buffer.trim() !== 'data: [DONE]') {
         try {
             var ds = buffer.trim().slice(6);
@@ -671,22 +643,109 @@ function importData(e) {
     reader.onload = function(ev) {
         try {
             var data = JSON.parse(ev.target.result);
-            if (confirm('导入将覆盖当前所有对话，确定继续？\n\n备份时间：' + (data.exportTime || '未知') + '\n对话数量：' + (data.conversations ? data.conversations.length : 0) + '个')) {
-                if (data.apiKey) { apiKey = data.apiKey; localStorage.setItem('deepseek_api_key', apiKey); apiKeyInput.value = apiKey; }
-                if (data.conversations) { conversations = data.conversations; saveConversations(); }
-                if (data.currentModelKey) {
-                    currentModelKey = data.currentModelKey;
-                    currentModel = modelList.find(function(m) { return m.key === currentModelKey; }).id;
-                    localStorage.setItem('deepseek_model_key', currentModelKey);
-                    updateModelBtnText(); renderDropdownActive();
-                }
-                renderChatList();
-                if (conversations.length > 0) switchChat(conversations[0].id);
-                showToast('✅ 已导入 ' + (data.conversations ? data.conversations.length : 0) + ' 个对话');
-            }
-        } catch (err) { alert('❌ 导入失败'); }
+            var importCount = data.conversations ? data.conversations.length : 0;
+            showImportDialog(data, importCount);
+        } catch (err) { alert('❌ 导入失败：文件格式不正确'); }
     };
-    reader.readAsText(file); e.target.value = '';
+    reader.readAsText(file);
+    e.target.value = '';
+}
+
+function showImportDialog(data, importCount) {
+    var oldDialog = document.getElementById('importDialog');
+    if (oldDialog) oldDialog.remove();
+
+    var dialog = document.createElement('div');
+    dialog.id = 'importDialog';
+    dialog.className = 'import-dialog-overlay';
+    dialog.innerHTML =
+        '<div class="import-dialog">' +
+        '<h3>📥 导入数据</h3>' +
+        '<div class="import-dialog-info">' +
+        '<p>备份时间：<strong>' + (data.exportTime || '未知') + '</strong></p>' +
+        '<p>对话数量：<strong>' + importCount + ' 个</strong></p>' +
+        '<p>当前对话：<strong>' + conversations.length + ' 个</strong></p>' +
+        '</div>' +
+        '<div class="import-dialog-options">' +
+        '<label class="import-option"><input type="radio" name="importMode" value="replace" checked>' +
+        '<div class="import-option-content"><span class="import-option-title">🔄 覆盖导入</span><span class="import-option-desc">清空当前所有对话，替换为导入的数据</span></div></label>' +
+        '<label class="import-option"><input type="radio" name="importMode" value="merge">' +
+        '<div class="import-option-content"><span class="import-option-title">➕ 合并导入</span><span class="import-option-desc">保留现有对话，将导入的对话添加到列表中</span></div></label>' +
+        '<label class="import-option"><input type="radio" name="importMode" value="apiOnly">' +
+        '<div class="import-option-content"><span class="import-option-title">🔑 仅导入 API Key</span><span class="import-option-desc">只更新 API Key 和模型设置</span></div></label>' +
+        '</div>' +
+        '<div class="import-dialog-actions">' +
+        '<button class="import-dialog-btn cancel" id="importCancelBtn">取消</button>' +
+        '<button class="import-dialog-btn confirm" id="importConfirmBtn">确认导入</button>' +
+        '</div></div>';
+
+    document.body.appendChild(dialog);
+
+    document.getElementById('importCancelBtn').addEventListener('click', function() { dialog.remove(); });
+    dialog.addEventListener('click', function(e) { if (e.target === dialog) dialog.remove(); });
+    document.getElementById('importConfirmBtn').addEventListener('click', function() {
+        var mode = dialog.querySelector('input[name="importMode"]:checked').value;
+        dialog.remove();
+        executeImport(data, mode);
+    });
+}
+
+function executeImport(data, mode) {
+    if (mode === 'replace') {
+        if (!confirm('覆盖导入将清空当前所有 ' + conversations.length + ' 个对话，确定继续？')) return;
+        if (data.apiKey) { apiKey = data.apiKey; localStorage.setItem('deepseek_api_key', apiKey); apiKeyInput.value = apiKey; }
+        if (data.conversations) { conversations = data.conversations; saveConversations(); }
+        if (data.currentModelKey) {
+            currentModelKey = data.currentModelKey;
+            currentModel = modelList.find(function(m) { return m.key === currentModelKey; }).id;
+            localStorage.setItem('deepseek_model_key', currentModelKey);
+            updateModelBtnText(); renderDropdownActive();
+        }
+        renderChatList();
+        if (conversations.length > 0) switchChat(conversations[0].id);
+        showToast('✅ 已覆盖导入 ' + conversations.length + ' 个对话');
+    } else if (mode === 'merge') {
+        var addedCount = 0;
+        var skippedCount = 0;
+        if (data.conversations && data.conversations.length > 0) {
+            var existingIds = {};
+            conversations.forEach(function(c) { existingIds[c.id] = true; });
+            data.conversations.forEach(function(importedChat) {
+                if (existingIds[importedChat.id]) {
+                    skippedCount++;
+                } else {
+                    importedChat.id = Date.now().toString() + '_' + Math.random().toString(36).substr(2, 9);
+                    importedChat.parentId = null;
+                    importedChat.branchPoint = null;
+                    importedChat.branches = [];
+                    conversations.unshift(importedChat);
+                    addedCount++;
+                }
+            });
+            saveConversations();
+        }
+        if (data.apiKey && data.apiKey !== apiKey) {
+            apiKey = data.apiKey;
+            localStorage.setItem('deepseek_api_key', apiKey);
+            apiKeyInput.value = apiKey;
+        }
+        renderChatList();
+        if (addedCount > 0) switchChat(conversations[0].id);
+        showToast('✅ 新增 ' + addedCount + ' 个对话' + (skippedCount > 0 ? '，跳过 ' + skippedCount + ' 个重复' : ''));
+    } else if (mode === 'apiOnly') {
+        if (data.apiKey) {
+            apiKey = data.apiKey;
+            localStorage.setItem('deepseek_api_key', apiKey);
+            apiKeyInput.value = apiKey;
+        }
+        if (data.currentModelKey) {
+            currentModelKey = data.currentModelKey;
+            currentModel = modelList.find(function(m) { return m.key === currentModelKey; }).id;
+            localStorage.setItem('deepseek_model_key', currentModelKey);
+            updateModelBtnText(); renderDropdownActive();
+        }
+        showToast('✅ API Key 已更新');
+    }
 }
 
 // ==================== 工具 ====================
