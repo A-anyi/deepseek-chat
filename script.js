@@ -104,6 +104,13 @@ function init() {
 function handleActionClick(e) {
     var target = e.target;
     while (target && target !== chatContainer) {
+        // 复制按钮
+        if (target.classList.contains('copy-btn')) {
+            e.preventDefault(); e.stopPropagation();
+            var content = target.getAttribute('data-copy-content');
+            if (content) copyToClipboard(content, target);
+            return;
+        }
         if (target.classList.contains('edit-msg-btn')) {
             e.preventDefault(); e.stopPropagation();
             var idx = parseInt(target.getAttribute('data-edit-idx'));
@@ -121,6 +128,47 @@ function handleActionClick(e) {
         }
         target = target.parentElement;
     }
+}
+
+// 复制到剪贴板
+function copyToClipboard(text, btn) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() {
+            showCopySuccess(btn);
+        }).catch(function() {
+            fallbackCopy(text, btn);
+        });
+    } else {
+        fallbackCopy(text, btn);
+    }
+}
+
+function fallbackCopy(text, btn) {
+    var textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try {
+        document.execCommand('copy');
+        showCopySuccess(btn);
+    } catch (e) {
+        showToast('❌ 复制失败');
+    }
+    document.body.removeChild(textarea);
+}
+
+function showCopySuccess(btn) {
+    var originalText = btn.textContent;
+    btn.textContent = '✅ 已复制';
+    btn.classList.add('copied');
+    setTimeout(function() {
+        btn.textContent = originalText;
+        btn.classList.remove('copied');
+    }, 1500);
 }
 
 // ==================== 模型 ====================
@@ -321,7 +369,7 @@ function renderChatList(filter) {
 function renderMessages(messages) {
     chatContainer.innerHTML = '';
     if (!messages || !messages.length) {
-        chatContainer.innerHTML = '<div class="welcome-message"><div class="bot-avatar"><img src="' + AVATAR_URL + '"></div><div class="message-content">你好！我是 DeepSeek 助手<br>流式输出 | ✏️ 编辑 | 🔄 重新生成</div></div>';
+        chatContainer.innerHTML = '<div class="welcome-message"><div class="bot-avatar"><img src="' + AVATAR_URL + '"></div><div class="message-content">你好！我是 DeepSeek 助手<br>流式输出 | ✏️ 编辑 | 📋 复制 | 🔄 重新生成</div></div>';
         renderTokenStats(); return;
     }
     var i = 0;
@@ -333,26 +381,45 @@ function renderMessages(messages) {
             ud.className = 'message user' + (isEdit ? ' editing' : '');
             ud.innerHTML = '<div class="message-content">' + esc(messages[i].content) + '</div>';
             grp.appendChild(ud);
+            
+            // 用户消息的操作按钮（复制 + 编辑）
+            var userAct = document.createElement('div');
+            userAct.className = 'message-actions';
+            userAct.style.cssText = 'padding-left:0;justify-content:flex-end;';
+            userAct.innerHTML = '<button class="copy-btn" data-copy-content="' + escAttr(messages[i].content) + '">📋 复制</button>' +
+                '<button class="edit-msg-btn" data-edit-idx="' + i + '">✏️ 编辑</button>';
+            grp.appendChild(userAct);
+            
             if (i + 1 < messages.length && messages[i + 1].role === 'assistant') {
                 var wrap = document.createElement('div'); wrap.className = 'message-collapsible';
                 var hdr = document.createElement('div'); hdr.className = 'message-collapsible-header';
                 hdr.innerHTML = '<span class="toggle-icon">▼</span><span>助手回复</span><span style="flex:1"></span><span style="font-size:0.7rem;color:var(--text-muted)">折叠</span>';
                 var body = document.createElement('div'); body.className = 'message-collapsible-body';
                 body.appendChild(msgEl('assistant', messages[i + 1].content));
+                
+                // 助手消息的操作按钮（复制 + 重新生成 + 分支）
                 var act = document.createElement('div'); act.className = 'message-actions';
-                act.innerHTML = '<button class="edit-msg-btn" data-edit-idx="' + i + '">✏️ 编辑</button><button class="regenerate-btn" data-idx="' + i + '">🔄 重新生成</button><button class="branch-msg-btn" data-idx="' + i + '">🔀 分支</button>';
+                act.innerHTML = '<button class="copy-btn" data-copy-content="' + escAttr(messages[i + 1].content) + '">📋 复制</button>' +
+                    '<button class="regenerate-btn" data-idx="' + i + '">🔄 重新生成</button>' +
+                    '<button class="branch-msg-btn" data-idx="' + i + '">🔀 分支</button>';
                 body.appendChild(act);
                 hdr.addEventListener('click', function() { body.classList.toggle('hidden'); hdr.classList.toggle('collapsed'); });
                 wrap.appendChild(hdr); wrap.appendChild(body); grp.appendChild(wrap);
                 i += 2;
             } else {
-                var act2 = document.createElement('div'); act2.className = 'message-actions';
-                act2.style.cssText = 'padding-left:0;justify-content:flex-end;';
-                act2.innerHTML = '<button class="edit-msg-btn" data-edit-idx="' + i + '">✏️ 编辑</button>';
-                grp.appendChild(act2); i++;
+                i++;
             }
             chatContainer.appendChild(grp);
-        } else { chatContainer.appendChild(msgEl('assistant', messages[i].content)); i++; }
+        } else {
+            // 孤立的助手消息
+            var assistantGrp = document.createElement('div'); assistantGrp.className = 'message-group';
+            assistantGrp.appendChild(msgEl('assistant', messages[i].content));
+            var aAct = document.createElement('div'); aAct.className = 'message-actions';
+            aAct.innerHTML = '<button class="copy-btn" data-copy-content="' + escAttr(messages[i].content) + '">📋 复制</button>';
+            assistantGrp.appendChild(aAct);
+            chatContainer.appendChild(assistantGrp);
+            i++;
+        }
     }
     renderTokenStats(); scrollBottom();
 }
@@ -760,6 +827,12 @@ function fmt(s) {
 }
 
 function esc(s) { if (!s) return ''; var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// HTML 属性转义（用于 data-copy-content）
+function escAttr(s) {
+    if (!s) return '';
+    return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 function saveApiKey() {
     var k = apiKeyInput.value.trim();
