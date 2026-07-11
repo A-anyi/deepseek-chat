@@ -900,3 +900,67 @@ body {
     border-color: var(--success-color);
     color: var(--success-color);
 }
+
+/* 系统设定区 */
+.system-prompt-area {
+    background: var(--bg-secondary, #1e1e2e);
+    border-bottom: 1px solid var(--border-color, #333);
+    flex-shrink: 0;
+}
+
+.system-header {
+    padding: 8px 14px;
+    cursor: pointer;
+    color: var(--text-secondary, #aaa);
+    font-size: 13px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+}
+
+.system-header:hover { background: var(--bg-hover, #2a2a3a); }
+
+#charCount { font-size: 11px; color: var(--text-muted, #777); }
+
+.system-body {
+    padding: 0 14px 12px;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+    max-height: 350px;
+    overflow: hidden;
+}
+
+.system-body.collapsed { max-height: 0; padding-top: 0; padding-bottom: 0; }
+
+#systemPrompt {
+    width: 100%;
+    min-height: 100px;
+    max-height: 260px;
+    background: var(--bg-primary, #16162a);
+    color: var(--text-primary, #e0e0e0);
+    border: 1px solid var(--border-color, #444);
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    resize: vertical;
+    font-family: inherit;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+}
+
+#systemPrompt:focus { border-color: var(--accent-color, #6a6aff); outline: none; }
+
+.system-actions { display: flex; gap: 6px; margin-top: 6px; }
+
+.system-actions button {
+    padding: 5px 10px;
+    background: var(--bg-tertiary, #2a2a4a);
+    color: var(--text-secondary, #bbb);
+    border: 1px solid var(--border-color, #555);
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.system-actions button:hover { background: var(--bg-hover, #3a3a5a); }
