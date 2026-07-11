@@ -52,7 +52,21 @@
                     </div>
                 </div>
             </div>
-
+            
+            <!-- 系统设定区 -->
+            <div class="system-prompt-area" id="systemPromptArea">
+                <div class="system-header" onclick="document.getElementById('systemBody').classList.toggle('collapsed'); this.classList.toggle('collapsed');">
+                    📋 系统设定 <span id="charCount">未设置</span>
+                </div>
+                <div class="system-body collapsed" id="systemBody">
+                    <textarea id="systemPrompt" placeholder="在这里粘贴你的角色设定、世界观规则等（支持几十万字）...&#10;&#10;设定会自动附加在每次对话前面"></textarea>
+                    <div class="system-actions">
+                        <button onclick="loadSystemFile()">📁 上传 TXT</button>
+                        <button onclick="clearSystemPrompt()">🗑️ 清空</button>
+                    </div>
+                </div>
+            </div>
+            
             <!-- API 配置 -->
             <div class="api-config" id="apiConfig">
                 <div class="config-header">
