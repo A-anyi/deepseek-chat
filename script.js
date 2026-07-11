@@ -99,6 +99,12 @@ function init() {
     messageInput.addEventListener('input', autoResize);
     chatContainer.addEventListener('click', handleActionClick);
     chatContainer.addEventListener('touchend', handleActionClick);
+      // 初始化系统设定
+    loadSavedSystemPrompt();
+    var sp = document.getElementById('systemPrompt');
+    if (sp) {
+        sp.addEventListener('input', autoSaveSystemPrompt);
+    }
 }
 
 function handleActionClick(e) {
@@ -498,7 +504,7 @@ function doStreamRequest() {
     abortController = new AbortController();
     var finalUsage = null;
 
-    callAPIStream(chat.messages.slice(0, -1), function(chunk) {
+    callAPIStream(buildMessagesWithSystemPrompt(chat.messages.slice(0, -1)), function(chunk) {
         streamBuffer += chunk;
         if (!streamTimer) {
             streamTimer = requestAnimationFrame(function() {
@@ -865,5 +871,60 @@ function fmtTime(d) {
 
 function fmtSize(b) { if (b < 1024) return b + ' B'; if (b < 1048576) return (b / 1024).toFixed(1) + ' KB'; return (b / 1048576).toFixed(1) + ' MB'; }
 function fmtToken(c) { if (c >= 1e6) return (c / 1e6).toFixed(1) + 'M'; if (c >= 1e3) return (c / 1e3).toFixed(1) + 'K'; return String(c); }
+
+// ==================== 系统设定 ====================
+function buildMessagesWithSystemPrompt(messages) {
+    var sp = document.getElementById('systemPrompt');
+    var content = sp ? sp.value.trim() : '';
+    if (!content) return messages;
+    return [{ role: 'system', content: content }].concat(messages);
+}
+
+function loadSystemFile() {
+    var input = document.createElement('input');
+    input.type = 'file'; input.accept = '.txt,.md';
+    input.onchange = function(e) {
+        var f = e.target.files[0];
+        if (!f) return;
+        if (f.size > 50 * 1024 * 1024) { showToast('⚠️ 文件太大'); return; }
+        var reader = new FileReader();
+        reader.onload = function(ev) {
+            document.getElementById('systemPrompt').value = ev.target.result;
+            updateSystemCharCount();
+            showToast('✅ 已加载：' + f.name + ' (' + fmtSize(f.size) + ')');
+        };
+        reader.readAsText(f, 'UTF-8');
+    };
+    input.click();
+}
+
+function clearSystemPrompt() {
+    if (confirm('确定清空系统设定？')) {
+        document.getElementById('systemPrompt').value = '';
+        updateSystemCharCount();
+    }
+}
+
+function updateSystemCharCount() {
+    var el = document.getElementById('charCount');
+    if (!el) return;
+    var n = (document.getElementById('systemPrompt').value || '').length;
+    el.textContent = n === 0 ? '未设置' : n < 1000 ? n + ' 字' : n < 10000 ? (n/1000).toFixed(1) + 'K 字' : (n/10000).toFixed(1) + 'W 字';
+}
+
+function loadSavedSystemPrompt() {
+    var s = localStorage.getItem('deepseek_system_prompt');
+    if (s) { var el = document.getElementById('systemPrompt'); if (el) el.value = s; updateSystemCharCount(); }
+}
+
+var _saveTimer;
+function autoSaveSystemPrompt() {
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(function() {
+        var c = document.getElementById('systemPrompt').value;
+        if (c) try { localStorage.setItem('deepseek_system_prompt', c); } catch(e) {}
+        updateSystemCharCount();
+    }, 500);
+}
 
 init();
