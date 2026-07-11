@@ -873,11 +873,23 @@ function fmtSize(b) { if (b < 1024) return b + ' B'; if (b < 1048576) return (b 
 function fmtToken(c) { if (c >= 1e6) return (c / 1e6).toFixed(1) + 'M'; if (c >= 1e3) return (c / 1e3).toFixed(1) + 'K'; return String(c); }
 
 // ==================== 系统设定 ====================
+var cachedSystemPrompt = null;
+
 function buildMessagesWithSystemPrompt(messages) {
     var sp = document.getElementById('systemPrompt');
     var content = sp ? sp.value.trim() : '';
-    if (!content) return messages;
-    return [{ role: 'system', content: content }].concat(messages);
+    
+    if (!content) {
+        cachedSystemPrompt = null;
+        return messages;
+    }
+    
+    // 只在设定内容变化时才更新缓存
+    if (content !== cachedSystemPrompt) {
+        cachedSystemPrompt = content;
+    }
+    
+    return [{ role: 'system', content: cachedSystemPrompt }].concat(messages);
 }
 
 function loadSystemFile() {
